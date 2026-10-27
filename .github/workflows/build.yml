@@ -32,11 +32,8 @@ jobs:
       - name: Configure App Icon & Splash Screen
         run: |
           if [ -f "icon.png" ]; then
-            echo "تم العثور على صورة icon.png جاري ضبط الحواف وتوليد الأيقونة وشاشة الفتح..."
-            convert icon.png -gravity center -crop 88%x88%+0+0 +repage \
-              -background "#1B3B7B" -gravity center -extent 115%x115% \
-              app_project/icon.png
-
+            echo "Found icon.png, generating icons and splash screen..."
+            cp icon.png app_project/icon.png
             cd app_project
 
             cat << 'EOF' >> pubspec.yaml
@@ -47,9 +44,10 @@ jobs:
             image_path: "icon.png"
             adaptive_icon_background: "#1B3B7B"
             adaptive_icon_foreground: "icon.png"
+            adaptive_icon_foreground_inset: 16
 
           flutter_native_splash:
-            color: "#1B3D7B"
+            color: "#1B3B7B"
             image: "icon.png"
             android_12:
               color: "#1B3B7B"
@@ -60,7 +58,7 @@ jobs:
             dart run flutter_launcher_icons
             dart run flutter_native_splash:create
           else
-            echo "تحذير: لم يتم العثور على ملف icon.png في المستودع!"
+            echo "Warning: icon.png not found!"
           fi
 
       - name: Prepare Signing Key
