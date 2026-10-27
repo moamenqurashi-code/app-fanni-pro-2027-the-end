@@ -1,0 +1,121 @@
+name: Build Fani Pro AAB and APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Create Flutter Project
+        run: |
+          flutter create --org com.pro.ap4016842 --project-name skn app_project
+          cd app_project
+          flutter pub add webview_flutter
+
+      - name: Configure App Settings
+        run: |
+          cd app_project
+          # تعديل الصلاحيات واسم التطبيق
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="skn"/android:label="فني برو"/g' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:hardwareAccelerated="true"/g' android/app/src/main/AndroidManifest.xml
+          
+          # رفع رقم الإصدار لجوجل بلاي
+          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
+
+      - name: Write Simple Flutter WebView Code
+        run: |
+          cat << 'EOF' > app_project/lib/main.dart
+          import 'package:flutter/material.dart';
+          import 'package:webview_flutter/webview_flutter.dart';
+
+          void main() {
+            runApp(const MaterialApp(
+              debugShowCheckedModeBanner: false,
+              home: FaniProScreen(),
+            ));
+          }
+
+          class FaniProScreen extends StatefulWidget {
+            const FaniProScreen({super.key});
+
+            @override
+            State<FaniProScreen> createState() => _FaniProScreenState();
+          }
+
+          class _FaniProScreenState extends State<FaniProScreen> {
+            late final WebViewController _controller;
+            bool _isLoading = true;
+
+            @override
+            void initState() {
+              super.initState();
+              _controller = WebViewController()
+                ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                ..setUserAgent('Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
+                ..setNavigationDelegate(
+                  NavigationDelegate(
+                    onPageStarted: (String url) => setState(() => _isLoading = true),
+                    onPageFinished: (String url) => setState(() => _isLoading = false),
+                  ),
+                )
+                ..loadRequest(Uri.parse('https://hrinnf.blogspot.com/'));
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return WillPopScope(
+                onWillPop: () async {
+                  if (await _controller.canGoBack()) {
+                    await _controller.goBack();
+                    return false;
+                  }
+                  return true;
+                },
+                child: Scaffold(
+                  backgroundColor: const Color(0xFF6C5CE7),
+                  body: SafeArea(
+                    child: Stack(
+                      children: [
+                        WebViewWidget(controller: _controller),
+                        if (_isLoading)
+                          const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+      - name: Build Both AAB and APK
+        run: |
+          cd app_project
+          flutter build appbundle --release --no-pub
+          flutter build apk --release --no-pub
+
+      - name: Upload Both Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: fani-pro-packages
+          path: |
+            app_project/build/app/outputs/bundle/release/app-release.aab
+            app_project/build/app/outputs/flutter-apk/app-release.apk
