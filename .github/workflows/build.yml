@@ -7,6 +7,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Setup Java
         uses: actions/setup-java@v3
         with:
@@ -19,30 +22,141 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
 
-      - name: Create Flutter Project
+      - name: Create Flutter Project & Add Packages
         run: |
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
-          flutter pub add webview_flutter
+          flutter pub add webview_flutter url_launcher
+          flutter pub add --dev flutter_launcher_icons flutter_native_splash
 
-      - name: Configure App Settings
+      - name: Configure App Icon & Splash Screen
+        run: |
+          if [ -f "icon.png" ]; then
+            echo "تم العثور على صورة icon.png جاري ضبط الحواف وتوليد الأيقونة وشاشة الفتح..."
+            convert icon.png -gravity center -crop 88%x88%+0+0 +repage \
+              -background "#1B3B7B" -gravity center -extent 115%x115% \
+              app_project/icon.png
+
+            cd app_project
+
+            cat << 'EOF' >> pubspec.yaml
+
+          flutter_launcher_icons:
+            android: true
+            ios: false
+            image_path: "icon.png"
+            adaptive_icon_background: "#1B3B7B"
+            adaptive_icon_foreground: "icon.png"
+
+          flutter_native_splash:
+            color: "#1B3D7B"
+            image: "icon.png"
+            android_12:
+              color: "#1B3B7B"
+              image: "icon.png"
+            web: false
+          EOF
+
+            dart run flutter_launcher_icons
+            dart run flutter_native_splash:create
+          else
+            echo "تحذير: لم يتم العثور على ملف icon.png في المستودع!"
+          fi
+
+      - name: Prepare Signing Key
+        run: |
+          if [ -f "my-key.jks" ]; then
+            cp my-key.jks app_project/android/app/upload-keystore.jks
+          else
+            cd app_project/android/app
+            keytool -genkeypair -v \
+              -keystore upload-keystore.jks \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias upload \
+              -storepass FaniPro2026 \
+              -keypass FaniPro2026 \
+              -dname "CN=Fanni Pro, OU=Dev, O=FanniPro, L=Cairo, S=Cairo, C=EG"
+
+            keytool -export -rfc \
+              -keystore upload-keystore.jks \
+              -alias upload \
+              -file upload_certificate.pem \
+              -storepass FaniPro2026
+
+            keytool -list -v -keystore upload-keystore.jks -storepass FaniPro2026 > key_fingerprints.txt
+          fi
+
+      - name: Configure AndroidManifest & Gradle Signing
         run: |
           cd app_project
-          # تعديل الصلاحيات واسم التطبيق
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="skn"/android:label="فني برو"/g' android/app/src/main/AndroidManifest.xml
-          sed -i 's/<application/<application android:hardwareAccelerated="true"/g' android/app/src/main/AndroidManifest.xml
-          
-          # رفع رقم الإصدار لجوجل بلاي
-          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
 
-      - name: Write Simple Flutter WebView Code
+          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="https" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="whatsapp" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.DIAL" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.SENDTO" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:label="فني برو"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher"
+                  android:usesCleartextTraffic="true"
+                  android:hardwareAccelerated="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                        android:name="io.flutter.embedding.android.NormalTheme"
+                        android:resource="@style/NormalTheme"
+                        />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+          </manifest>
+          EOF
+
+          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
+          sed -i 's/versionName flutterVersionName/versionName "1.1.0"/g' android/app/build.gradle
+
+          sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "FaniPro2026"\n            keyAlias "upload"\n            keyPassword "FaniPro2026"\n        }\n    }' android/app/build.gradle
+          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
+
+      - name: Write Optimized Flutter WebView Code
         run: |
           cat << 'EOF' > app_project/lib/main.dart
           import 'package:flutter/material.dart';
           import 'package:webview_flutter/webview_flutter.dart';
+          import 'package:url_launcher/url_launcher.dart';
 
           void main() {
+            WidgetsFlutterBinding.ensureInitialized();
             runApp(const MaterialApp(
               debugShowCheckedModeBanner: false,
               home: FaniProScreen(),
@@ -65,11 +179,73 @@ jobs:
               super.initState();
               _controller = WebViewController()
                 ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                ..setBackgroundColor(const Color(0xFF1B3B7B))
                 ..setUserAgent('Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
                 ..setNavigationDelegate(
                   NavigationDelegate(
+                    onProgress: (int progress) {
+                      if (progress > 70 && _isLoading) {
+                        setState(() => _isLoading = false);
+                      }
+                    },
                     onPageStarted: (String url) => setState(() => _isLoading = true),
-                    onPageFinished: (String url) => setState(() => _isLoading = false),
+                    onPageFinished: (String url) {
+                      if (_isLoading) setState(() => _isLoading = false);
+
+                      _controller.runJavaScript('''
+                        (function() {
+                          var style = document.createElement('style');
+                          style.innerHTML = '* { -webkit-tap-highlight-color: transparent; } input, textarea { scroll-margin-bottom: 150px; }';
+                          document.head.appendChild(style);
+
+                          document.addEventListener('focusin', function(e) {
+                            var tag = e.target.tagName;
+                            if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
+                              setTimeout(function() {
+                                e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }, 300);
+                            }
+                          });
+                        })();
+                      ''');
+                    },
+                    onNavigationRequest: (NavigationRequest request) async {
+                      final String url = request.url;
+                      final String lowerUrl = url.toLowerCase();
+                      final Uri uri = Uri.parse(url);
+
+                      if (lowerUrl.startsWith('intent://')) {
+                        try {
+                          final RegExp schemeReg = RegExp(r'scheme=([a-zA-Z0-9]+);');
+                          final match = schemeReg.firstMatch(url);
+                          if (match != null) {
+                            final String scheme = match.group(1)!;
+                            final String convertedUrl = url
+                                .replaceFirst('intent://', '$scheme://')
+                                .split('#Intent')[0];
+                            await launchUrl(Uri.parse(convertedUrl), mode: LaunchMode.externalApplication);
+                            return NavigationDecision.prevent;
+                          }
+                        } catch (_) {}
+                        return NavigationDecision.prevent;
+                      }
+
+                      if (!['http', 'https'].contains(uri.scheme) ||
+                          lowerUrl.contains('wa.me/') ||
+                          lowerUrl.contains('api.whatsapp.com') ||
+                          lowerUrl.contains('whatsapp.com/send') ||
+                          lowerUrl.contains('chat.whatsapp.com') ||
+                          lowerUrl.contains('t.me/')) {
+                        try {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } catch (e) {
+                          debugPrint('Error launching URL: $e');
+                        }
+                        return NavigationDecision.prevent;
+                      }
+
+                      return NavigationDecision.navigate;
+                    },
                   ),
                 )
                 ..loadRequest(Uri.parse('https://hrinnf.blogspot.com/'));
@@ -77,16 +253,17 @@ jobs:
 
             @override
             Widget build(BuildContext context) {
-              return WillPopScope(
-                onWillPop: () async {
+              return PopScope(
+                canPop: false,
+                onPopInvoked: (didPop) async {
+                  if (didPop) return;
                   if (await _controller.canGoBack()) {
                     await _controller.goBack();
-                    return false;
                   }
-                  return true;
                 },
                 child: Scaffold(
-                  backgroundColor: const Color(0xFF6C5CE7),
+                  resizeToAvoidBottomInset: true,
+                  backgroundColor: const Color(0xFF1B3B7B),
                   body: SafeArea(
                     child: Stack(
                       children: [
@@ -106,16 +283,19 @@ jobs:
           }
           EOF
 
-      - name: Build Both AAB and APK
+      - name: Build Signed AAB and APK
         run: |
           cd app_project
-          flutter build appbundle --release --no-pub
-          flutter build apk --release --no-pub
+          flutter build appbundle --release
+          flutter build apk --release
 
-      - name: Upload Both Files
+      - name: Upload App Bundles & Keys
         uses: actions/upload-artifact@v4
         with:
           name: fani-pro-packages
           path: |
             app_project/build/app/outputs/bundle/release/app-release.aab
             app_project/build/app/outputs/flutter-apk/app-release.apk
+            app_project/android/app/upload-keystore.jks
+            app_project/android/app/upload_certificate.pem
+            app_project/android/app/key_fingerprints.txt
