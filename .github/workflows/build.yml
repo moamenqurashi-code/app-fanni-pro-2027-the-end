@@ -18,8 +18,9 @@ jobs:
 
       - name: Setup Android SDK Platform 36
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-36" "build-tools;34.0.0"
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-36"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
