@@ -60,20 +60,15 @@ jobs:
       - name: Prepare Signing Key
         run: |
           if [ -f "my-key.jks" ]; then
-            echo "Using existing my-key.jks..."
+            echo "Found my-key.jks in repository root. Copying to android/app..."
             cp my-key.jks app_project/android/app/upload-keystore.jks
+            ls -la app_project/android/app/upload-keystore.jks
           else
-            cd app_project/android/app
-            keytool -genkeypair -v \
-              -keystore upload-keystore.jks \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias upload \
-              -storepass FaniPro2026 \
-              -keypass FaniPro2026 \
-              -dname "CN=Fanni Pro, OU=Dev, O=FanniPro, L=Cairo, S=Cairo, C=EG"
+            echo "ERROR: my-key.jks not found in repository root! Aborting build to prevent wrong signature."
+            exit 1
           fi
 
-      - name: Configure AndroidManifest & Speed Tweaks
+      - name: Configure AndroidManifest & Signing in Gradle
         run: |
           cd app_project
 
@@ -130,14 +125,20 @@ jobs:
           </manifest>
           EOF
 
+          # ضبط الإصدار والـ SDK (رفعت لك versionCode لـ 12 لتجنب خطأ تكرار رقم الإصدار في جوجل بلاي)
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle
 
-          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
-          sed -i 's/versionName flutterVersionName/versionName "1.1.0"/g' android/app/build.gradle
+          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 12/g' android/app/build.gradle
+          sed -i 's/versionCode = flutterVersionCode.toInteger()/versionCode = 12/g' android/app/build.gradle
 
+          sed -i 's/versionName flutterVersionName/versionName "1.2.0"/g' android/app/build.gradle
+          sed -i 's/versionName = flutterVersionName/versionName = "1.2.0"/g' android/app/build.gradle
+
+          # حقن إعدادات التوقيع الرسمي وربطها بالـ release
           sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "FaniPro2026"\n            keyAlias "upload"\n            keyPassword "FaniPro2026"\n        }\n    }' android/app/build.gradle
           sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
+          sed -i 's/signingConfig = signingConfigs.debug/signingConfig = signingConfigs.release/g' android/app/build.gradle
 
       - name: Write High Performance Flutter WebView Code
         run: |
@@ -171,7 +172,6 @@ jobs:
             void initState() {
               super.initState();
 
-              // تثبيت شاشة الدخول لمدة ثانيتين بالضبط
               Future.delayed(const Duration(seconds: 2), () {
                 if (mounted && _isSplashVisible) {
                   setState(() {
@@ -186,7 +186,6 @@ jobs:
               final WebViewController controller =
                   WebViewController.fromPlatformCreationParams(params);
 
-              // تفعيل إعدادات تسريع التصفح والكاش على أندرويد
               if (controller.platform is AndroidWebViewController) {
                 AndroidWebViewController.enableDebugging(false);
                 (controller.platform as AndroidWebViewController)
@@ -205,16 +204,13 @@ jobs:
                       });
                     },
                     onPageFinished: (String url) {
-                      // كود جافاسكريبت متطور لحل مشكلة تغطية الكيبورد للسطور وتسريع اللمس
                       controller.runJavaScript('''
                         (function() {
-                          // إلغاء تأخير النقرات 300ms
                           var meta = document.querySelector('meta[name="viewport"]');
                           if (meta) {
                             meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
                           }
 
-                          // حل مشكلة تغطية حقول الإدخال عند ظهور لوحة المفاتيح
                           function handleFocus(e) {
                             var target = e.target;
                             if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) {
@@ -227,7 +223,6 @@ jobs:
                           document.removeEventListener('focusin', handleFocus);
                           document.addEventListener('focusin', handleFocus);
 
-                          // مراقبة الـ Viewport عند فتح الكيبورد في أندرويد الحديث
                           if (window.visualViewport) {
                             window.visualViewport.addEventListener('resize', function() {
                               var active = document.activeElement;
@@ -292,7 +287,6 @@ jobs:
                   }
                 },
                 child: Scaffold(
-                  // ضروري جداً لكي تتقلص شاشة الويب فيو تلقائياً مع حجم لوحة المفاتيح
                   resizeToAvoidBottomInset: true,
                   backgroundColor: const Color(0xFF1B3B7B),
                   body: SafeArea(
@@ -300,7 +294,6 @@ jobs:
                       children: [
                         WebViewWidget(controller: _controller),
 
-                        // مؤشر تحميل خفيف وسريع في أعلى الصفحة بدلاً من الدائرة التي تعطل الحركة
                         if (_loadingProgress < 1.0 && !_isSplashVisible)
                           LinearProgressIndicator(
                             value: _loadingProgress,
@@ -309,7 +302,6 @@ jobs:
                             minHeight: 2.5,
                           ),
 
-                        // شاشة الدخول: تختفي تماماً من شجرة الرسوم (Tree) بمجرد التحميل لتفريغ الرام
                         if (_isSplashVisible)
                           Positioned.fill(
                             child: Container(
