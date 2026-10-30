@@ -11,15 +11,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Setup Android SDK Platform 36
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "build-tools;34.0.0"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.24.5'
           channel: 'stable'
 
       - name: Create Flutter Project & Add Packages
@@ -153,7 +158,7 @@ jobs:
 
           android {
               namespace "com.pro.ap4016842.skn"
-              compileSdk 37
+              compileSdk 36
               ndkVersion flutter.ndkVersion
 
               compileOptions {
@@ -172,7 +177,7 @@ jobs:
               defaultConfig {
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
-                  targetSdkVersion 37
+                  targetSdkVersion 36
                   versionCode 13
                   versionName "1.3.0"
               }
