@@ -34,18 +34,18 @@ jobs:
           cd app_project
           mkdir -p assets
 
-          if [ -f "../splash.png" ]; then
-            cp ../splash.png assets/splash.png
-          elif [ -f "../icon.png" ]; then
-            cp ../icon.png assets/splash.png
+          if [ -f "$GITHUB_WORKSPACE/splash.png" ]; then
+            cp "$GITHUB_WORKSPACE/splash.png" assets/splash.png
+          elif [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
+            cp "$GITHUB_WORKSPACE/icon.png" assets/splash.png
           fi
 
           sed -i 's/# assets:/assets:\n    - assets\/splash.png/g' pubspec.yaml
 
-          if [ -f "../icon.png" ]; then
+          if [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
             rm -rf android/app/src/main/res/mipmap-anydpi-v26
 
-            cp ../icon.png icon.png
+            cp "$GITHUB_WORKSPACE/icon.png" icon.png
             cat << 'EOF' >> pubspec.yaml
 
           flutter_launcher_icons:
@@ -57,20 +57,29 @@ jobs:
             dart run flutter_launcher_icons
           fi
 
-      - name: Prepare Signing Key
+      - name: Prepare Signing Key & Verify Alias
         run: |
-          if [ -f "my-key.jks" ]; then
-            echo "Found my-key.jks in repository root. Copying to android/app..."
-            cp my-key.jks app_project/android/app/upload-keystore.jks
-            ls -la app_project/android/app/upload-keystore.jks
-          else
-            echo "ERROR: my-key.jks not found in repository root! Aborting build to prevent wrong signature."
+          echo "Checking files in $GITHUB_WORKSPACE:"
+          ls -la "$GITHUB_WORKSPACE"
+
+          # البحث عن الملف في المسار الرئيسي للمستودع
+          KEY_PATH=$(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f \( -name "my-key.jks" -o -name "*.jks" \) | head -n 1)
+
+          if [ -z "$KEY_PATH" ]; then
+            echo "ERROR: my-key.jks not found in repository!"
             exit 1
           fi
 
+          echo "Found keystore at: $KEY_PATH"
+          cp "$KEY_PATH" "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks"
+
+          # طباعة تفاصيل المفتاح وبصمة SHA1 للتأكد في السجل أنها مطابقة لجوجل بلاي
+          echo "Verifying Keystore SHA1 and Alias..."
+          keytool -list -v -keystore "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks" -storepass FaniPro2026
+
       - name: Configure AndroidManifest & Signing in Gradle
         run: |
-          cd app_project
+          cd "$GITHUB_WORKSPACE/app_project"
 
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -125,24 +134,85 @@ jobs:
           </manifest>
           EOF
 
-          # ضبط الإصدار والـ SDK (رفعت لك versionCode لـ 12 لتجنب خطأ تكرار رقم الإصدار في جوجل بلاي)
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle
+          # استخراج اسم الـ Alias الفعلي من داخل ملف التوقيع تلقائياً
+          ACTUAL_ALIAS=$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass FaniPro2026 | grep "Alias name:" | head -n 1 | awk '{print $3}')
+          if [ -z "$ACTUAL_ALIAS" ]; then
+            ACTUAL_ALIAS="upload"
+          fi
+          echo "Using Key Alias: $ACTUAL_ALIAS"
 
-          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 12/g' android/app/build.gradle
-          sed -i 's/versionCode = flutterVersionCode.toInteger()/versionCode = 12/g' android/app/build.gradle
+          # إنشاء ملف key.properties بالطريقة الرسمية المعتمدة في Flutter
+          cat << EOF > android/key.properties
+          storePassword=FaniPro2026
+          keyPassword=FaniPro2026
+          keyAlias=$ACTUAL_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
 
-          sed -i 's/versionName flutterVersionName/versionName "1.2.0"/g' android/app/build.gradle
-          sed -i 's/versionName = flutterVersionName/versionName = "1.2.0"/g' android/app/build.gradle
+          # كتابة ملف build.gradle نظيف ومضبوط 100% ليقرأ التوقيع الرسمي
+          cat << 'EOF' > android/app/build.gradle
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
 
-          # حقن إعدادات التوقيع الرسمي وربطها بالـ release
-          sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "FaniPro2026"\n            keyAlias "upload"\n            keyPassword "FaniPro2026"\n        }\n    }' android/app/build.gradle
-          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
-          sed -i 's/signingConfig = signingConfigs.debug/signingConfig = signingConfigs.release/g' android/app/build.gradle
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          android {
+              namespace "com.pro.ap4016842.skn"
+              compileSdk flutter.compileSdkVersion
+              ndkVersion flutter.ndkVersion
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.pro.ap4016842.skn"
+                  minSdkVersion 24
+                  targetSdkVersion flutter.targetSdkVersion
+                  versionCode 12
+                  versionName "1.2.0"
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+          EOF
 
       - name: Write High Performance Flutter WebView Code
         run: |
-          cat << 'EOF' > app_project/lib/main.dart
+          cat << 'EOF' > "$GITHUB_WORKSPACE/app_project/lib/main.dart"
           import 'package:flutter/material.dart';
           import 'package:webview_flutter/webview_flutter.dart';
           import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -338,7 +408,7 @@ jobs:
 
       - name: Build Signed AAB and APK
         run: |
-          cd app_project
+          cd "$GITHUB_WORKSPACE/app_project"
           flutter build appbundle --release
           flutter build apk --release
 
