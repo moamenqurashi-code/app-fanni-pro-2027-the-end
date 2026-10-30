@@ -43,13 +43,18 @@ jobs:
           sed -i 's/# assets:/assets:\n    - assets\/splash.png/g' pubspec.yaml
 
           if [ -f "../icon.png" ]; then
+            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            rm -rf android/app/src/main/res/drawable*
+
             cp ../icon.png icon.png
             cat << 'EOF' >> pubspec.yaml
 
           flutter_launcher_icons:
-            android: true
+            android: "ic_launcher"
             ios: false
             image_path: "icon.png"
+            min_sdk_android: 24
+            remove_alpha_ios: true
           EOF
             dart run flutter_launcher_icons
           fi
@@ -127,6 +132,9 @@ jobs:
           </manifest>
           EOF
 
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle
+
           sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
           sed -i 's/versionName flutterVersionName/versionName "1.1.0"/g' android/app/build.gradle
 
@@ -165,6 +173,15 @@ jobs:
             void initState() {
               super.initState();
 
+              // تثبيت شاشة الدخول لمدة ثانيتين بالضبط
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted && _isSplashVisible) {
+                  setState(() {
+                    _isSplashVisible = false;
+                  });
+                }
+              });
+
               final PlatformWebViewControllerCreationParams params =
                   const PlatformWebViewControllerCreationParams();
 
@@ -188,20 +205,8 @@ jobs:
                       setState(() {
                         _loadingProgress = progress / 100;
                       });
-                      // أول ما الصفحة توصل 60% بنشيل شاشة البداية فوراً لتسريع الاستجابة
-                      if (progress > 60 && _isSplashVisible) {
-                        setState(() {
-                          _isSplashVisible = false;
-                        });
-                      }
                     },
                     onPageFinished: (String url) {
-                      if (_isSplashVisible) {
-                        setState(() {
-                          _isSplashVisible = false;
-                        });
-                      }
-
                       // كود جافاسكريبت متطور لحل مشكلة تغطية الكيبورد للسطور وتسريع اللمس
                       controller.runJavaScript('''
                         (function() {
