@@ -54,17 +54,23 @@ jobs:
             dart run flutter_launcher_icons
           fi
 
-      - name: Verify & Copy Existing Signing Key
+      - name: Prepare Signing Key
         run: |
           if [ -f "my-key.jks" ]; then
-            echo "Found my-key.jks! Using your official key..."
+            echo "Using existing my-key.jks..."
             cp my-key.jks app_project/android/app/upload-keystore.jks
           else
-            echo "ERROR: my-key.jks is missing from repository root!"
-            exit 1
+            cd app_project/android/app
+            keytool -genkeypair -v \
+              -keystore upload-keystore.jks \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias upload \
+              -storepass FaniPro2026 \
+              -keypass FaniPro2026 \
+              -dname "CN=Fanni Pro, OU=Dev, O=FanniPro, L=Cairo, S=Cairo, C=EG"
           fi
 
-      - name: Configure AndroidManifest, Version 11 & Signing
+      - name: Configure AndroidManifest & AdMob App ID
         run: |
           cd app_project
 
@@ -98,7 +104,7 @@ jobs:
                   android:largeHeap="true"
                   android:hardwareAccelerated="true">
 
-                  <!-- معرّف تطبيق AdMob (استبدله بمعرّفك الحقيقي من حسابك الجديد) -->
+                  <!-- 1. ضع معرّف تطبيق AdMob الخاص بك هنا بدلاً من المعرّف التجريبي -->
                   <meta-data
                       android:name="com.google.android.gms.ads.APPLICATION_ID"
                       android:value="ca-app-pub-3940256099942544~3347511713"/>
@@ -110,7 +116,7 @@ jobs:
                       android:theme="@style/LaunchTheme"
                       android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
                       android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
+                      android:windowSoftInputMode="adjustResize|stateHidden">
                       <meta-data
                         android:name="io.flutter.embedding.android.NormalTheme"
                         android:resource="@style/NormalTheme"
@@ -127,15 +133,13 @@ jobs:
           </manifest>
           EOF
 
-          # تثبيت الإصدار على 11 والاسم على 1.1.0
-          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
-          sed -i 's/versionName flutterVersionName/versionName "1.1.0"/g' android/app/build.gradle
+          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 12/g' android/app/build.gradle
+          sed -i 's/versionName flutterVersionName/versionName "1.2.0"/g' android/app/build.gradle
 
-          # ربط كلمة السر والبصمة بملف my-key.jks
           sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "FaniPro2026"\n            keyAlias "upload"\n            keyPassword "FaniPro2026"\n        }\n    }' android/app/build.gradle
           sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
 
-      - name: Write Fast WebView, Keyboard Fix & AdMob Code
+      - name: Write Flutter WebView & Full AdMob Code
         run: |
           cat << 'EOF' > app_project/lib/main.dart
           import 'package:flutter/material.dart';
@@ -165,7 +169,8 @@ jobs:
             bool _isSplashVisible = true;
             double _loadingProgress = 0.0;
 
-            // شفرات الوحدات الإعلانية (استبدلها بشفراتك الحقيقية من حساب AdMob الجديد)
+            // ================= شفرات الوحدات الإعلانية =================
+            // 2. استبدل هذه الشفرات الثلاث بشفراتك الحقيقية من AdMob
             final String _bannerUnitId = 'ca-app-pub-3940256099942544/6300978111';
             final String _interstitialUnitId = 'ca-app-pub-3940256099942544/1033173712';
             final String _rewardedUnitId = 'ca-app-pub-3940256099942544/5224354917';
@@ -217,39 +222,36 @@ jobs:
                         });
                       }
 
+                      // عداد الصفحات لعرض الإعلان البيني كل 4 صفحات
                       _pageClickCount++;
                       if (_pageClickCount >= 4) {
                         _showInterstitialAd();
                         _pageClickCount = 0;
                       }
 
-                      // معالجة جذرية لمشكلة تغطية لوحة المفاتيح للسطور وتسريع التمرير
                       controller.runJavaScript('''
                         (function() {
-                          var style = document.getElementById('fani-kb-fix');
-                          if (!style) {
-                            style = document.createElement('style');
-                            style.id = 'fani-kb-fix';
-                            style.innerHTML = '* { -webkit-tap-highlight-color: transparent; } input, textarea, [contenteditable] { scroll-margin-bottom: 180px !important; scroll-margin-top: 80px !important; }';
-                            document.head.appendChild(style);
+                          var meta = document.querySelector('meta[name="viewport"]');
+                          if (meta) {
+                            meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
                           }
-
-                          function scrollActiveInput() {
-                            var el = document.activeElement;
-                            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+                          function handleFocus(e) {
+                            var target = e.target;
+                            if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) {
                               setTimeout(function() {
-                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              }, 250);
+                                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }, 350);
                             }
                           }
-
-                          document.removeEventListener('focusin', scrollActiveInput);
-                          document.addEventListener('focusin', scrollActiveInput);
-                          document.removeEventListener('input', scrollActiveInput);
-                          document.addEventListener('input', scrollActiveInput);
-
+                          document.removeEventListener('focusin', handleFocus);
+                          document.addEventListener('focusin', handleFocus);
                           if (window.visualViewport) {
-                            window.visualViewport.onresize = scrollActiveInput;
+                            window.visualViewport.addEventListener('resize', function() {
+                              var active = document.activeElement;
+                              if (active && (['INPUT', 'TEXTAREA'].includes(active.tagName) || active.isContentEditable)) {
+                                active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            });
                           }
                         })();
                       ''');
@@ -259,6 +261,7 @@ jobs:
                       final String lower = url.toLowerCase();
                       final Uri uri = Uri.parse(url);
 
+                      // إذا كان الرابط لملف PDF أو Google Drive أو يحتوي على #reward يشغل إعلان المكافأة أولاً
                       if (lower.endsWith('.pdf') || lower.contains('drive.google.com') || lower.contains('#reward')) {
                         _showRewardedAdAndRun(() async {
                           final String cleanUrl = url.replaceAll('#reward', '');
@@ -304,25 +307,37 @@ jobs:
               _controller = controller;
             }
 
+            // 1. تحميل إعلان البانر العلوي
             void _loadBannerAd() {
               _bannerAd = BannerAd(
                 adUnitId: _bannerUnitId,
                 request: const AdRequest(),
                 size: AdSize.banner,
                 listener: BannerAdListener(
-                  onAdLoaded: (ad) => setState(() => _isBannerLoaded = true),
-                  onAdFailedToLoad: (ad, err) => ad.dispose(),
+                  onAdLoaded: (ad) {
+                    setState(() {
+                      _isBannerLoaded = true;
+                    });
+                  },
+                  onAdFailedToLoad: (ad, err) {
+                    ad.dispose();
+                  },
                 ),
               )..load();
             }
 
+            // 2. تحميل وتشغيل الإعلان البيني
             void _loadInterstitialAd() {
               InterstitialAd.load(
                 adUnitId: _interstitialUnitId,
                 request: const AdRequest(),
                 adLoadCallback: InterstitialAdLoadCallback(
-                  onAdLoaded: (ad) => _interstitialAd = ad,
-                  onAdFailedToLoad: (err) => _interstitialAd = null,
+                  onAdLoaded: (ad) {
+                    _interstitialAd = ad;
+                  },
+                  onAdFailedToLoad: (err) {
+                    _interstitialAd = null;
+                  },
                 ),
               );
             }
@@ -346,13 +361,18 @@ jobs:
               }
             }
 
+            // 3. تحميل وتشغيل إعلان المكافأة
             void _loadRewardedAd() {
               RewardedAd.load(
                 adUnitId: _rewardedUnitId,
                 request: const AdRequest(),
                 rewardedAdLoadCallback: RewardedAdLoadCallback(
-                  onAdLoaded: (ad) => _rewardedAd = ad,
-                  onAdFailedToLoad: (err) => _rewardedAd = null,
+                  onAdLoaded: (ad) {
+                    _rewardedAd = ad;
+                  },
+                  onAdFailedToLoad: (err) {
+                    _rewardedAd = null;
+                  },
                 ),
               );
             }
@@ -377,6 +397,7 @@ jobs:
                 );
                 _rewardedAd = null;
               } else {
+                // إذا لم يكن الإعلان جاهزاً يفتح الرابط فوراً حتى لا يتعطل الطالب
                 onRewardEarned();
                 _loadRewardedAd();
               }
@@ -392,9 +413,6 @@ jobs:
 
             @override
             Widget build(BuildContext context) {
-              // إخفاء البانر العلوي تلقائياً لحظة فتح لوحة المفاتيح لتوسيع الشاشة للكتابة
-              final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 100;
-
               return PopScope(
                 canPop: false,
                 onPopInvoked: (didPop) async {
@@ -409,17 +427,21 @@ jobs:
                   body: SafeArea(
                     child: Column(
                       children: [
-                        if (_isBannerLoaded && _bannerAd != null && !_isSplashVisible && !isKeyboardOpen)
+                        // ================= إعلان البانر في أعلى الشاشة =================
+                        if (_isBannerLoaded && _bannerAd != null && !_isSplashVisible)
                           Container(
                             color: const Color(0xFF1B3B7B),
                             width: _bannerAd!.size.width.toDouble(),
                             height: _bannerAd!.size.height.toDouble(),
                             child: AdWidget(ad: _bannerAd!),
                           ),
+
+                        // ================= مساحة الموقع وشاشة الدخول =================
                         Expanded(
                           child: Stack(
                             children: [
                               WebViewWidget(controller: _controller),
+
                               if (_loadingProgress < 1.0 && !_isSplashVisible)
                                 LinearProgressIndicator(
                                   value: _loadingProgress,
@@ -427,6 +449,7 @@ jobs:
                                   valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
                                   minHeight: 2.5,
                                 ),
+
                               if (_isSplashVisible)
                                 Positioned.fill(
                                   child: Container(
