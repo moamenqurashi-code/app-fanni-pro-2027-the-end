@@ -153,16 +153,16 @@ jobs:
 
           android {
               namespace "com.pro.ap4016842.skn"
-              compileSdk 36
+              compileSdk 37
               ndkVersion flutter.ndkVersion
 
               compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
+                  sourceCompatibility JavaVersion.VERSION_17_
+                  targetCompatibility JavaVersion.VERSION_17_
               }
 
               kotlinOptions {
-                  jvmTarget = '1.8'
+                  jvmTarget = '17'
               }
 
               sourceSets {
@@ -172,7 +172,7 @@ jobs:
               defaultConfig {
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
-                  targetSdkVersion 36
+                  targetSdkVersion 37
                   versionCode 13
                   versionName "1.3.0"
               }
