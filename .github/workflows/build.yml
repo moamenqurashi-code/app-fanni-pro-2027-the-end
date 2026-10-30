@@ -26,7 +26,7 @@ jobs:
         run: |
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
-          flutter pub add webview_flutter webview_flutter_android url_launcher google_mobile_ads
+          flutter pub add webview_flutter webview_flutter_android url_launcher
           flutter pub add --dev flutter_launcher_icons
 
       - name: Configure App Icon & Full Splash Image
@@ -70,7 +70,7 @@ jobs:
               -dname "CN=Fanni Pro, OU=Dev, O=FanniPro, L=Cairo, S=Cairo, C=EG"
           fi
 
-      - name: Configure AndroidManifest & AdMob App ID
+      - name: Configure AndroidManifest & Speed Tweaks
         run: |
           cd app_project
 
@@ -103,12 +103,6 @@ jobs:
                   android:usesCleartextTraffic="true"
                   android:largeHeap="true"
                   android:hardwareAccelerated="true">
-
-                  <!-- 1. ضع معرّف تطبيق AdMob الخاص بك هنا بدلاً من المعرّف التجريبي -->
-                  <meta-data
-                      android:name="com.google.android.gms.ads.APPLICATION_ID"
-                      android:value="ca-app-pub-3940256099942544~3347511713"/>
-
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -133,24 +127,22 @@ jobs:
           </manifest>
           EOF
 
-          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 12/g' android/app/build.gradle
-          sed -i 's/versionName flutterVersionName/versionName "1.2.0"/g' android/app/build.gradle
+          sed -i 's/versionCode flutterVersionCode.toInteger()/versionCode 11/g' android/app/build.gradle
+          sed -i 's/versionName flutterVersionName/versionName "1.1.0"/g' android/app/build.gradle
 
           sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "FaniPro2026"\n            keyAlias "upload"\n            keyPassword "FaniPro2026"\n        }\n    }' android/app/build.gradle
           sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
 
-      - name: Write Flutter WebView & Full AdMob Code
+      - name: Write High Performance Flutter WebView Code
         run: |
           cat << 'EOF' > app_project/lib/main.dart
           import 'package:flutter/material.dart';
           import 'package:webview_flutter/webview_flutter.dart';
           import 'package:webview_flutter_android/webview_flutter_android.dart';
           import 'package:url_launcher/url_launcher.dart';
-          import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-          void main() async {
+          void main() {
             WidgetsFlutterBinding.ensureInitialized();
-            await MobileAds.instance.initialize();
             runApp(const MaterialApp(
               debugShowCheckedModeBanner: false,
               home: FaniProScreen(),
@@ -169,30 +161,17 @@ jobs:
             bool _isSplashVisible = true;
             double _loadingProgress = 0.0;
 
-            // ================= شفرات الوحدات الإعلانية =================
-            // 2. استبدل هذه الشفرات الثلاث بشفراتك الحقيقية من AdMob
-            final String _bannerUnitId = 'ca-app-pub-3940256099942544/6300978111';
-            final String _interstitialUnitId = 'ca-app-pub-3940256099942544/1033173712';
-            final String _rewardedUnitId = 'ca-app-pub-3940256099942544/5224354917';
-
-            BannerAd? _bannerAd;
-            bool _isBannerLoaded = false;
-            InterstitialAd? _interstitialAd;
-            RewardedAd? _rewardedAd;
-            int _pageClickCount = 0;
-
             @override
             void initState() {
               super.initState();
-              _loadBannerAd();
-              _loadInterstitialAd();
-              _loadRewardedAd();
 
               final PlatformWebViewControllerCreationParams params =
                   const PlatformWebViewControllerCreationParams();
+
               final WebViewController controller =
                   WebViewController.fromPlatformCreationParams(params);
 
+              // تفعيل إعدادات تسريع التصفح والكاش على أندرويد
               if (controller.platform is AndroidWebViewController) {
                 AndroidWebViewController.enableDebugging(false);
                 (controller.platform as AndroidWebViewController)
@@ -209,6 +188,7 @@ jobs:
                       setState(() {
                         _loadingProgress = progress / 100;
                       });
+                      // أول ما الصفحة توصل 60% بنشيل شاشة البداية فوراً لتسريع الاستجابة
                       if (progress > 60 && _isSplashVisible) {
                         setState(() {
                           _isSplashVisible = false;
@@ -222,19 +202,16 @@ jobs:
                         });
                       }
 
-                      // عداد الصفحات لعرض الإعلان البيني كل 4 صفحات
-                      _pageClickCount++;
-                      if (_pageClickCount >= 4) {
-                        _showInterstitialAd();
-                        _pageClickCount = 0;
-                      }
-
+                      // كود جافاسكريبت متطور لحل مشكلة تغطية الكيبورد للسطور وتسريع اللمس
                       controller.runJavaScript('''
                         (function() {
+                          // إلغاء تأخير النقرات 300ms
                           var meta = document.querySelector('meta[name="viewport"]');
                           if (meta) {
                             meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
                           }
+
+                          // حل مشكلة تغطية حقول الإدخال عند ظهور لوحة المفاتيح
                           function handleFocus(e) {
                             var target = e.target;
                             if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) {
@@ -243,8 +220,11 @@ jobs:
                               }, 350);
                             }
                           }
+
                           document.removeEventListener('focusin', handleFocus);
                           document.addEventListener('focusin', handleFocus);
+
+                          // مراقبة الـ Viewport عند فتح الكيبورد في أندرويد الحديث
                           if (window.visualViewport) {
                             window.visualViewport.addEventListener('resize', function() {
                               var active = document.activeElement;
@@ -260,15 +240,6 @@ jobs:
                       final String url = request.url;
                       final String lower = url.toLowerCase();
                       final Uri uri = Uri.parse(url);
-
-                      // إذا كان الرابط لملف PDF أو Google Drive أو يحتوي على #reward يشغل إعلان المكافأة أولاً
-                      if (lower.endsWith('.pdf') || lower.contains('drive.google.com') || lower.contains('#reward')) {
-                        _showRewardedAdAndRun(() async {
-                          final String cleanUrl = url.replaceAll('#reward', '');
-                          await launchUrl(Uri.parse(cleanUrl), mode: LaunchMode.externalApplication);
-                        });
-                        return NavigationDecision.prevent;
-                      }
 
                       if (lower.startsWith('intent://')) {
                         try {
@@ -307,110 +278,6 @@ jobs:
               _controller = controller;
             }
 
-            // 1. تحميل إعلان البانر العلوي
-            void _loadBannerAd() {
-              _bannerAd = BannerAd(
-                adUnitId: _bannerUnitId,
-                request: const AdRequest(),
-                size: AdSize.banner,
-                listener: BannerAdListener(
-                  onAdLoaded: (ad) {
-                    setState(() {
-                      _isBannerLoaded = true;
-                    });
-                  },
-                  onAdFailedToLoad: (ad, err) {
-                    ad.dispose();
-                  },
-                ),
-              )..load();
-            }
-
-            // 2. تحميل وتشغيل الإعلان البيني
-            void _loadInterstitialAd() {
-              InterstitialAd.load(
-                adUnitId: _interstitialUnitId,
-                request: const AdRequest(),
-                adLoadCallback: InterstitialAdLoadCallback(
-                  onAdLoaded: (ad) {
-                    _interstitialAd = ad;
-                  },
-                  onAdFailedToLoad: (err) {
-                    _interstitialAd = null;
-                  },
-                ),
-              );
-            }
-
-            void _showInterstitialAd() {
-              if (_interstitialAd != null) {
-                _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-                  onAdDismissedFullScreenContent: (ad) {
-                    ad.dispose();
-                    _loadInterstitialAd();
-                  },
-                  onAdFailedToShowFullScreenContent: (ad, err) {
-                    ad.dispose();
-                    _loadInterstitialAd();
-                  },
-                );
-                _interstitialAd!.show();
-                _interstitialAd = null;
-              } else {
-                _loadInterstitialAd();
-              }
-            }
-
-            // 3. تحميل وتشغيل إعلان المكافأة
-            void _loadRewardedAd() {
-              RewardedAd.load(
-                adUnitId: _rewardedUnitId,
-                request: const AdRequest(),
-                rewardedAdLoadCallback: RewardedAdLoadCallback(
-                  onAdLoaded: (ad) {
-                    _rewardedAd = ad;
-                  },
-                  onAdFailedToLoad: (err) {
-                    _rewardedAd = null;
-                  },
-                ),
-              );
-            }
-
-            void _showRewardedAdAndRun(VoidCallback onRewardEarned) {
-              if (_rewardedAd != null) {
-                _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
-                  onAdDismissedFullScreenContent: (ad) {
-                    ad.dispose();
-                    _loadRewardedAd();
-                  },
-                  onAdFailedToShowFullScreenContent: (ad, err) {
-                    ad.dispose();
-                    _loadRewardedAd();
-                    onRewardEarned();
-                  },
-                );
-                _rewardedAd!.show(
-                  onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-                    onRewardEarned();
-                  },
-                );
-                _rewardedAd = null;
-              } else {
-                // إذا لم يكن الإعلان جاهزاً يفتح الرابط فوراً حتى لا يتعطل الطالب
-                onRewardEarned();
-                _loadRewardedAd();
-              }
-            }
-
-            @override
-            void dispose() {
-              _bannerAd?.dispose();
-              _interstitialAd?.dispose();
-              _rewardedAd?.dispose();
-              super.dispose();
-            }
-
             @override
             Widget build(BuildContext context) {
               return PopScope(
@@ -422,62 +289,49 @@ jobs:
                   }
                 },
                 child: Scaffold(
+                  // ضروري جداً لكي تتقلص شاشة الويب فيو تلقائياً مع حجم لوحة المفاتيح
                   resizeToAvoidBottomInset: true,
                   backgroundColor: const Color(0xFF1B3B7B),
                   body: SafeArea(
-                    child: Column(
+                    child: Stack(
                       children: [
-                        // ================= إعلان البانر في أعلى الشاشة =================
-                        if (_isBannerLoaded && _bannerAd != null && !_isSplashVisible)
-                          Container(
-                            color: const Color(0xFF1B3B7B),
-                            width: _bannerAd!.size.width.toDouble(),
-                            height: _bannerAd!.size.height.toDouble(),
-                            child: AdWidget(ad: _bannerAd!),
+                        WebViewWidget(controller: _controller),
+
+                        // مؤشر تحميل خفيف وسريع في أعلى الصفحة بدلاً من الدائرة التي تعطل الحركة
+                        if (_loadingProgress < 1.0 && !_isSplashVisible)
+                          LinearProgressIndicator(
+                            value: _loadingProgress,
+                            backgroundColor: Colors.transparent,
+                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
+                            minHeight: 2.5,
                           ),
 
-                        // ================= مساحة الموقع وشاشة الدخول =================
-                        Expanded(
-                          child: Stack(
-                            children: [
-                              WebViewWidget(controller: _controller),
-
-                              if (_loadingProgress < 1.0 && !_isSplashVisible)
-                                LinearProgressIndicator(
-                                  value: _loadingProgress,
-                                  backgroundColor: Colors.transparent,
-                                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
-                                  minHeight: 2.5,
-                                ),
-
-                              if (_isSplashVisible)
-                                Positioned.fill(
-                                  child: Container(
-                                    color: const Color(0xFF1B3B7B),
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Image.asset(
-                                          'assets/splash.png',
-                                          fit: BoxFit.cover,
-                                        ),
-                                        const Positioned(
-                                          bottom: 60,
-                                          left: 0,
-                                          right: 0,
-                                          child: Center(
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                        // شاشة الدخول: تختفي تماماً من شجرة الرسوم (Tree) بمجرد التحميل لتفريغ الرام
+                        if (_isSplashVisible)
+                          Positioned.fill(
+                            child: Container(
+                              color: const Color(0xFF1B3B7B),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.asset(
+                                    'assets/splash.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                                  const Positioned(
+                                    bottom: 60,
+                                    left: 0,
+                                    right: 0,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
-                                ),
-                            ],
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
