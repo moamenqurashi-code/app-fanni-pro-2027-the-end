@@ -161,10 +161,6 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
-          cat << 'EOF' >> android/gradle.properties
-          android.bundle.enableUncompressedNativeLibs=false
-          EOF
-
           sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/' android/settings.gradle || true
           sed -i 's/gradle-.*-all.zip/gradle-8.9-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
