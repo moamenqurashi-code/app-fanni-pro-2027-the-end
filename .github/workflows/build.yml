@@ -16,26 +16,26 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Android SDK Platform 36
+      - name: Setup Android SDK & NDK for 16KB Page Size
         run: |
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36"
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "ndk;27.0.12077973"
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Supports 16KB Page Alignment)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.27.1'
           channel: 'stable'
 
       - name: Create Flutter Project & Add Packages
         run: |
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
-          flutter pub add webview_flutter webview_flutter_android url_launcher
+          flutter pub add webview_flutter webview_flutter_android url_launcher image_picker permission_handler
           flutter pub add --dev flutter_launcher_icons
 
-      - name: Configure App Icon & Full Splash Image
+      - name: Configure App Icon & High-Res Splash Image
         run: |
           cd app_project
           mkdir -p assets
@@ -46,7 +46,13 @@ jobs:
             cp "$GITHUB_WORKSPACE/icon.png" assets/splash.png
           fi
 
-          sed -i 's/# assets:/assets:\n    - assets\/splash.png/g' pubspec.yaml
+          if [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
+            cp "$GITHUB_WORKSPACE/icon.png" assets/icon.png
+          else
+            cp assets/splash.png assets/icon.png
+          fi
+
+          sed -i 's/# assets:/assets:\n    - assets\/splash.png\n    - assets\/icon.png/g' pubspec.yaml
 
           if [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
             rm -rf android/app/src/main/res/mipmap-anydpi-v26
@@ -75,19 +81,28 @@ jobs:
           cp "$KEY_PATH" "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks"
           keytool -list -v -keystore "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks" -storepass FaniPro2026
 
-      - name: Configure AndroidManifest & Signing in Gradle
+      - name: Configure AndroidManifest, 16KB Page Size & Signing in Gradle
         run: |
           cd "$GITHUB_WORKSPACE/app_project"
 
           cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:replace="android:maxSdkVersion"/>
+              <uses-permission android:name="android.permission.CAMERA"/>
 
               <queries>
                   <intent>
                       <action android:name="android.intent.action.VIEW" />
                       <data android:scheme="https" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="http" />
                   </intent>
                   <intent>
                       <action android:name="android.intent.action.VIEW" />
@@ -107,6 +122,8 @@ jobs:
                   android:icon="@mipmap/ic_launcher"
                   android:usesCleartextTraffic="true"
                   android:largeHeap="true"
+                  android:requestLegacyExternalStorage="true"
+                  android:extractNativeLibs="false"
                   android:hardwareAccelerated="true">
                   <activity
                       android:name=".MainActivity"
@@ -144,6 +161,14 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
+          # تفعيل دعم 16 KB في خصائص Gradle
+          cat << 'EOF' >> android/gradle.properties
+          android.bundle.enableUncompressedNativeLibs=false
+          EOF
+
+          # تحديث AGP لدعم محاذاة 16 KB بشكل كامل
+          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/' android/settings.gradle || true
+
           cat << 'EOF' > android/app/build.gradle
           plugins {
               id "com.android.application"
@@ -160,7 +185,7 @@ jobs:
           android {
               namespace "com.pro.ap4016842.skn"
               compileSdk 36
-              ndkVersion flutter.ndkVersion
+              ndkVersion "27.0.12077973"
 
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -179,8 +204,14 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 14
-                  versionName "1.4.0"
+                  versionCode 15
+                  versionName "1.5.0"
+              }
+
+              packagingOptions {
+                  jniLibs {
+                      useLegacyPackaging = false
+                  }
               }
 
               signingConfigs {
@@ -195,6 +226,8 @@ jobs:
               buildTypes {
                   release {
                       signingConfig signingConfigs.release
+                      minifyEnabled false
+                      shrinkResources false
                   }
               }
           }
@@ -207,17 +240,32 @@ jobs:
       - name: Write High Performance Flutter WebView Code
         run: |
           cat << 'EOF' > "$GITHUB_WORKSPACE/app_project/lib/main.dart"
+          import 'dart:async';
+          import 'dart:io';
           import 'package:flutter/material.dart';
           import 'package:webview_flutter/webview_flutter.dart';
           import 'package:webview_flutter_android/webview_flutter_android.dart';
           import 'package:url_launcher/url_launcher.dart';
+          import 'package:image_picker/image_picker.dart';
+          import 'package:permission_handler/permission_handler.dart';
 
           void main() {
             WidgetsFlutterBinding.ensureInitialized();
-            runApp(const MaterialApp(
-              debugShowCheckedModeBanner: false,
-              home: FaniProScreen(),
-            ));
+            runApp(
+              MaterialApp(
+                debugShowCheckedModeBanner: false,
+                builder: (context, child) {
+                  // تثبيت حجم الخط لمنع اختلاف شكل التطبيق بين الهواتف
+                  return MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: const TextScaler.linear(1.0),
+                    ),
+                    child: child!,
+                  );
+                },
+                home: const FaniProScreen(),
+              ),
+            );
           }
 
           class FaniProScreen extends StatefulWidget {
@@ -229,51 +277,142 @@ jobs:
 
           class _FaniProScreenState extends State<FaniProScreen> {
             late final WebViewController _controller;
-            bool _isSplashVisible = true;
+            bool _isSplashTimerDone = false;
+            bool _isPageLoaded = false;
+            bool _hasInternet = true;
+            bool _hasWebError = false;
             double _loadingProgress = 0.0;
+            Timer? _networkTimer;
+            String _lastUrl = 'https://hrinnf.blogspot.com/';
 
             @override
             void initState() {
               super.initState();
+              _requestAppPermissions();
+              _initWebView();
+              _startSplashAndNetworkGuard();
+            }
 
-              Future.delayed(const Duration(seconds: 2), () {
-                if (mounted && _isSplashVisible) {
+            Future<void> _requestAppPermissions() async {
+              try {
+                await [
+                  Permission.photos,
+                  Permission.storage,
+                  Permission.notification,
+                ].request();
+              } catch (_) {}
+            }
+
+            // فحص اتصال الإنترنت الفعلي + مؤقت 4 ثوانٍ لشاشة البداية
+            void _startSplashAndNetworkGuard() {
+              Future.delayed(const Duration(seconds: 4), () {
+                if (mounted) {
                   setState(() {
-                    _isSplashVisible = false;
+                    _isSplashTimerDone = true;
                   });
                 }
               });
 
-              final PlatformWebViewControllerCreationParams params =
-                  const PlatformWebViewControllerCreationParams();
+              _checkInternetConnection();
+              _networkTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+                _checkInternetConnection();
+              });
+            }
+
+            Future<void> _checkInternetConnection() async {
+              try {
+                final result = await InternetAddress.lookup('google.com')
+                    .timeout(const Duration(seconds: 2));
+                final bool connected =
+                    result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+
+                if (mounted) {
+                  if (connected && (!_hasInternet || _hasWebError)) {
+                    // عاد الإنترنت! أعد تحميل الصفحة فوراً كالصاروخ
+                    setState(() {
+                      _hasInternet = true;
+                      _hasWebError = false;
+                    });
+                    _controller.loadRequest(Uri.parse(_lastUrl));
+                  } else if (!connected && _hasInternet) {
+                    setState(() {
+                      _hasInternet = false;
+                    });
+                  }
+                }
+              } catch (_) {
+                if (mounted && _hasInternet) {
+                  setState(() {
+                    _hasInternet = false;
+                  });
+                }
+              }
+            }
+
+            void _initWebView() {
+              const PlatformWebViewControllerCreationParams params =
+                  PlatformWebViewControllerCreationParams();
 
               final WebViewController controller =
                   WebViewController.fromPlatformCreationParams(params);
 
               if (controller.platform is AndroidWebViewController) {
                 AndroidWebViewController.enableDebugging(false);
-                (controller.platform as AndroidWebViewController)
-                  ..setMediaPlaybackRequiresUserGesture(false);
+                final androidController =
+                    controller.platform as AndroidWebViewController;
+                androidController.setMediaPlaybackRequiresUserGesture(false);
+                // تثبيت زووم الخط داخل الويب فيو 100% على كل الهواتف
+                androidController.setTextZoom(100);
+
+                // تفعيل رفع الصور من الاستوديو داخل الشات والملف الشخصي
+                androidController.setOnShowFileSelector((FileSelectorParams params) async {
+                  try {
+                    final ImagePicker picker = ImagePicker();
+                    final XFile? image = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 80,
+                    );
+                    if (image != null) {
+                      return [File(image.path).uri.toString()];
+                    }
+                  } catch (_) {}
+                  return [];
+                });
               }
 
               controller
                 ..setJavaScriptMode(JavaScriptMode.unrestricted)
                 ..setBackgroundColor(const Color(0xFF1B3B7B))
-                ..setUserAgent('Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
+                ..setUserAgent(
+                    'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
                 ..setNavigationDelegate(
                   NavigationDelegate(
                     onProgress: (int progress) {
-                      setState(() {
-                        _loadingProgress = progress / 100;
-                      });
+                      if (mounted) {
+                        setState(() {
+                          _loadingProgress = progress / 100;
+                        });
+                      }
+                    },
+                    onPageStarted: (String url) {
+                      if (url.startsWith('http')) {
+                        _lastUrl = url;
+                      }
                     },
                     onPageFinished: (String url) {
+                      if (mounted && !_hasWebError) {
+                        setState(() {
+                          _isPageLoaded = true;
+                        });
+                      }
+
                       controller.runJavaScript('''
                         (function() {
                           var meta = document.querySelector('meta[name="viewport"]');
                           if (meta) {
                             meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
                           }
+                          document.documentElement.style.webkitTextSizeAdjust = '100%';
 
                           function handleFocus(e) {
                             var target = e.target;
@@ -286,23 +425,44 @@ jobs:
 
                           document.removeEventListener('focusin', handleFocus);
                           document.addEventListener('focusin', handleFocus);
-
-                          if (window.visualViewport) {
-                            window.visualViewport.addEventListener('resize', function() {
-                              var active = document.activeElement;
-                              if (active && (['INPUT', 'TEXTAREA'].includes(active.tagName) || active.isContentEditable)) {
-                                active.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              }
-                            });
-                          }
                         })();
                       ''');
+                    },
+                    onWebResourceError: (WebResourceError error) {
+                      // منع ظهور صفحة خطأ بلوجر/الأندرويد القبيحة عند انقطاع النت
+                      if (error.isForMainFrame ?? true) {
+                        if (mounted) {
+                          setState(() {
+                            _hasWebError = true;
+                            _hasInternet = false;
+                          });
+                        }
+                      }
                     },
                     onNavigationRequest: (NavigationRequest request) async {
                       final String url = request.url;
                       final String lower = url.toLowerCase();
                       final Uri uri = Uri.parse(url);
 
+                      // 1. دعم تحميل المذكرات وملفات الـ PDF (من بلوجر أو موقع أموالي أو جوجل درايف)
+                      final bool isDownloadFile = lower.endsWith('.pdf') ||
+                          lower.endsWith('.doc') ||
+                          lower.endsWith('.docx') ||
+                          lower.endsWith('.zip') ||
+                          lower.endsWith('.rar') ||
+                          lower.endsWith('.apk') ||
+                          lower.contains('drive.google.com/uc?') ||
+                          lower.contains('drive.usercontent.google.com/download') ||
+                          lower.contains('mediafire.com/file/');
+
+                      if (isDownloadFile) {
+                        try {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } catch (_) {}
+                        return NavigationDecision.prevent;
+                      }
+
+                      // 2. معالجة روابط Intent
                       if (lower.startsWith('intent://')) {
                         try {
                           final RegExp reg = RegExp(r'scheme=([a-zA-Z0-9]+);');
@@ -312,13 +472,15 @@ jobs:
                             final String converted = url
                                 .replaceFirst('intent://', '\$scheme://')
                                 .split('#Intent')[0];
-                            await launchUrl(Uri.parse(converted), mode: LaunchMode.externalApplication);
+                            await launchUrl(Uri.parse(converted),
+                                mode: LaunchMode.externalApplication);
                             return NavigationDecision.prevent;
                           }
                         } catch (_) {}
                         return NavigationDecision.prevent;
                       }
 
+                      // 3. فتح واتساب وتليجرام والاتصال خارجياً
                       if (!['http', 'https'].contains(uri.scheme) ||
                           lower.contains('wa.me/') ||
                           lower.contains('api.whatsapp.com') ||
@@ -335,16 +497,26 @@ jobs:
                     },
                   ),
                 )
-                ..loadRequest(Uri.parse('https://hrinnf.blogspot.com/'));
+                ..loadRequest(Uri.parse(_lastUrl));
 
               _controller = controller;
             }
 
             @override
+            void dispose() {
+              _networkTimer?.cancel();
+              super.dispose();
+            }
+
+            @override
             Widget build(BuildContext context) {
+              // تظل شاشة البداية ظاهرة إذا لم تمر 4 ثوانٍ أو كان الإنترنت مقطوعاً أو حدث خطأ
+              final bool showSplashOrOffline =
+                  !_isSplashTimerDone || !_isPageLoaded || !_hasInternet || _hasWebError;
+
               return PopScope(
                 canPop: false,
-                onPopInvoked: (didPop) async {
+                onPopInvokedWithResult: (didPop, result) async {
                   if (didPop) return;
                   if (await _controller.canGoBack()) {
                     await _controller.goBack();
@@ -358,35 +530,152 @@ jobs:
                       children: [
                         WebViewWidget(controller: _controller),
 
-                        if (_loadingProgress < 1.0 && !_isSplashVisible)
+                        if (_loadingProgress < 1.0 && !showSplashOrOffline)
                           LinearProgressIndicator(
                             value: _loadingProgress,
                             backgroundColor: Colors.transparent,
-                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
+                            valueColor:
+                                const AlwaysStoppedAnimation<Color>(Colors.amber),
                             minHeight: 2.5,
                           ),
 
-                        if (_isSplashVisible)
+                        if (showSplashOrOffline)
                           Positioned.fill(
                             child: Container(
-                              color: const Color(0xFF1B3B7B),
-                              child: Stack(
-                                fit: StackFit.expand,
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF234696),
+                                    Color(0xFF13295B),
+                                  ],
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Image.asset(
-                                    'assets/splash.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                                  const Positioned(
-                                    bottom: 60,
-                                    left: 0,
-                                    right: 0,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
+                                  const Spacer(flex: 3),
+                                  // عرض الأيقونة بحجم متناسق وجودة فائقة بدون بكسلة
+                                  Container(
+                                    width: 135,
+                                    height: 135,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(28),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.28),
+                                          blurRadius: 18,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(28),
+                                      child: Image.asset(
+                                        'assets/splash.png',
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.high,
+                                        isAntiAlias: true,
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(height: 18),
+                                  const Text(
+                                    'تطبيق فني برو',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'مساعد طالب التعليم الفني',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(flex: 2),
+
+                                  // الجزء الذكي: إما دائرة تحميل أو رسالة تفعيل الإنترنت
+                                  if (_hasInternet && !_hasWebError)
+                                    const Column(
+                                      children: [
+                                        CircularProgressIndicator(
+                                          color: Colors.amber,
+                                          strokeWidth: 3,
+                                        ),
+                                        SizedBox(height: 14),
+                                        Text(
+                                          'جاري تجهيز المنصة...',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else
+                                    Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 28),
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.amber.withOpacity(0.5),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          const Icon(
+                                            Icons.wifi_off_rounded,
+                                            color: Colors.amber,
+                                            size: 36,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          const Text(
+                                            'لا يوجد اتصال بالإنترنت',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          const Text(
+                                            'يرجى تفعيل الواي فاي أو بيانات الهاتف، وسيفتح التطبيق تلقائياً فوراً',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12.5,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.amber,
+                                              foregroundColor: Colors.black87,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                            onPressed: () {
+                                              _checkInternetConnection();
+                                              _controller.loadRequest(Uri.parse(_lastUrl));
+                                            },
+                                            icon: const Icon(Icons.refresh, size: 18),
+                                            label: const Text(
+                                              'إعادة المحاولة الآن',
+                                              style: TextStyle(fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  const SizedBox(height: 45),
                                 ],
                               ),
                             ),
