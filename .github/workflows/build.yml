@@ -511,9 +511,9 @@ jobs:
 
               // تفعيل أداة فحص التحديثات التلقائية من متجر جوجل بلاي
               return UpgradeAlert(
+                dialogStyle: UpgradeDialogStyle.material,
                 upgrader: Upgrader(
                   messages: UpgraderMessages(code: 'ar'),
-                  dialogStyle: UpgradeDialogStyle.material,
                   durationUntilAlertAgain: const Duration(hours: 4),
                 ),
                 child: PopScope(
