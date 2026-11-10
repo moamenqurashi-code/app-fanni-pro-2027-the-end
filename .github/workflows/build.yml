@@ -308,7 +308,7 @@ jobs:
             }
 
             void _startSplashAndNetworkGuard() {
-              Future.delayed(const Duration(seconds: 4), () {
+              Future.delayed(const Duration(seconds: 3), () {
                 if (mounted) {
                   setState(() {
                     _isSplashTimerDone = true;
@@ -330,16 +330,20 @@ jobs:
                     result.isNotEmpty && result[0].rawAddress.isNotEmpty;
 
                 if (mounted) {
-                  if (connected && (!_hasInternet || _hasWebError)) {
-                    setState(() {
-                      _hasInternet = true;
-                      _hasWebError = false;
-                    });
-                    _controller.loadRequest(Uri.parse(_lastUrl));
-                  } else if (!connected && _hasInternet) {
-                    setState(() {
-                      _hasInternet = false;
-                    });
+                  if (connected) {
+                    if (!_hasInternet || _hasWebError) {
+                      setState(() {
+                        _hasInternet = true;
+                        _hasWebError = false;
+                      });
+                      _controller.loadRequest(Uri.parse(_lastUrl));
+                    }
+                  } else {
+                    if (_hasInternet) {
+                      setState(() {
+                        _hasInternet = false;
+                      });
+                    }
                   }
                 }
               } catch (_) {
@@ -434,7 +438,11 @@ jobs:
                           setState(() {
                             _hasWebError = true;
                             _hasInternet = false;
+                            _isPageLoaded = false;
                           });
+                          controller.loadHtmlString(
+                            '<html><body style="background-color:#1B3B7B;"></body></html>',
+                          );
                         }
                       }
                     },
@@ -542,90 +550,96 @@ jobs:
 
                           if (showSplashOrOffline)
                             Positioned.fill(
-                              child: Stack(
-                                children: [
-                                  // صورة الدخول تملأ الشاشة بالكامل بدون أي تصغير أو اقتطاع
-                                  Positioned.fill(
-                                    child: Image.asset(
-                                      'assets/splash.png',
-                                      fit: BoxFit.cover,
-                                      filterQuality: FilterQuality.high,
-                                      isAntiAlias: true,
-                                    ),
-                                  ),
-
-                                  // إذا لم يكن هناك إنترنت تظهر رسالة عدم الاتصال الأنيقة في الأسفل
-                                  if (!_hasInternet || _hasWebError)
-                                    Positioned(
-                                      bottom: 40,
-                                      left: 28,
-                                      right: 28,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF13295B).withOpacity(0.92),
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(
-                                            color: Colors.amber.withOpacity(0.5),
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.4),
-                                              blurRadius: 15,
-                                              offset: const Offset(0, 6),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Icons.wifi_off_rounded,
-                                              color: Colors.amber,
-                                              size: 36,
-                                            ),
-                                            const SizedBox(height: 8),
-                                            const Text(
-                                              'لا يوجد اتصال بالإنترنت',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            const Text(
-                                              'يرجى تفعيل الواي فاي أو بيانات الهاتف، وسيفتح التطبيق تلقائياً فوراً',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 12.5,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.amber,
-                                                foregroundColor: Colors.black87,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                              ),
-                                              onPressed: () {
-                                                _checkInternetConnection();
-                                                _controller.loadRequest(Uri.parse(_lastUrl));
-                                              },
-                                              icon: const Icon(Icons.refresh, size: 18),
-                                              label: const Text(
-                                                'إعادة المحاولة الآن',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                              child: Container(
+                                color: const Color(0xFF1B3B7B),
+                                child: Stack(
+                                  children: [
+                                    // صورة شاشة البداية بحجمها الكامل الطبيعي وبدون أي تقليص
+                                    Positioned.fill(
+                                      child: Image.asset(
+                                        'assets/splash.png',
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.high,
                                       ),
                                     ),
-                                ],
+
+                                    // الدايرة الدوارة البيضاء أثناء التحميل
+                                    if (_hasInternet && !_hasWebError)
+                                      const Align(
+                                        alignment: Alignment(0, 0.75),
+                                        child: SizedBox(
+                                          width: 30,
+                                          height: 30,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 3,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ),
+                                      ),
+
+                                    // رسالة تنبيه انقطاع الإنترنت عند عدم وجود شبكة
+                                    if (!_hasInternet || _hasWebError)
+                                      Positioned(
+                                        bottom: 30,
+                                        left: 24,
+                                        right: 24,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF13295B).withOpacity(0.95),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: Colors.amber.withOpacity(0.5),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.wifi_off_rounded,
+                                                color: Colors.amber,
+                                                size: 34,
+                                              ),
+                                              const SizedBox(height: 8),
+                                              const Text(
+                                                'لا يوجد اتصال بالإنترنت',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                'يرجى تفعيل الواي فاي أو بيانات الهاتف، وسيفتح التطبيق تلقائياً فوراً',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 12.5,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.amber,
+                                                  foregroundColor: Colors.black87,
+                                                ),
+                                                onPressed: () {
+                                                  _checkInternetConnection();
+                                                  _controller.loadRequest(Uri.parse(_lastUrl));
+                                                },
+                                                icon: const Icon(Icons.refresh, size: 18),
+                                                label: const Text(
+                                                  'إعادة المحاولة الآن',
+                                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
                         ],
