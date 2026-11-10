@@ -1,4 +1,4 @@
-Name: Build Fani Pro AAB and APK
+name: Build Fani Pro AAB and APK
 
 on:
   workflow_dispatch:
