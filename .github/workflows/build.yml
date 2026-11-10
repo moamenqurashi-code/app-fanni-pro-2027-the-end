@@ -33,11 +33,10 @@ jobs:
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
           flutter pub add webview_flutter webview_flutter_android url_launcher image_picker "permission_handler:^11.3.1" "permission_handler_android:12.1.0" upgrader
-          flutter pub add --dev flutter_launcher_icons
 
       - name: Configure App Icon & High-Res Splash Image
         run: |
-          cd app_project
+          cd "$GITHUB_WORKSPACE/app_project"
           mkdir -p assets
 
           if [ -f "$GITHUB_WORKSPACE/splash.png" ]; then
@@ -54,25 +53,25 @@ jobs:
 
           sed -i 's/# assets:/assets:\n    - assets\/splash.png\n    - assets\/icon.png/g' pubspec.yaml
 
-          if [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
-            # تنظيف مسارات الأيقونات القديمة
-            rm -rf android/app/src/main/res/mipmap-*
+          python3 - << 'PYEOF'
+          import os, shutil
 
-            # قص الهوامش الشفافة المحيطة بالـ PNG وتكبير الأيقونة لتملأ الحجم القياسي بالكامل
-            convert "$GITHUB_WORKSPACE/icon.png" -trim +repage -resize 512x512\! clean_icon.png
+          workspace = os.environ.get("GITHUB_WORKSPACE", "")
+          custom_icon = os.path.join(workspace, "icon.png")
+          if not os.path.exists(custom_icon):
+              custom_icon = os.path.join(workspace, "splash.png")
 
-            cat << 'EOF' >> pubspec.yaml
+          anydpi_dir = "android/app/src/main/res/mipmap-anydpi-v26"
+          if os.path.exists(anydpi_dir):
+              shutil.rmtree(anydpi_dir)
 
-          flutter_launcher_icons:
-            android: "ic_launcher"
-            ios: false
-            image_path: "clean_icon.png"
-            min_sdk_android: 24
-            adaptive_icon_background: "#1B3B7B"
-            adaptive_icon_foreground: "clean_icon.png"
-          EOF
-            dart run flutter_launcher_icons
-          fi
+          for folder in ["mipmap-mdpi", "mipmap-hdpi", "mipmap-xhdpi", "mipmap-xxhdpi", "mipmap-xxxhdpi"]:
+              p = os.path.join("android/app/src/main/res", folder)
+              os.makedirs(p, exist_ok=True)
+              target_file = os.path.join(p, "ic_launcher.png")
+              if os.path.exists(custom_icon):
+                  shutil.copy(custom_icon, target_file)
+          PYEOF
 
       - name: Prepare Signing Key & Verify Alias
         run: |
