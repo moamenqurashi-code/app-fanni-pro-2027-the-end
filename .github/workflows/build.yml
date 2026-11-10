@@ -32,7 +32,7 @@ jobs:
         run: |
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
-          flutter pub add webview_flutter webview_flutter_android url_launcher image_picker permission_handler upgrader
+          flutter pub add webview_flutter webview_flutter_android url_launcher image_picker "permission_handler:^11.3.1" "permission_handler_android:12.1.0" upgrader
           flutter pub add --dev flutter_launcher_icons
 
       - name: Configure App Icon & High-Res Splash Image
@@ -161,10 +161,18 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
-          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/' android/settings.gradle || true
-          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' android/settings.gradle || true
+          for f in android/settings.gradle android/settings.gradle.kts; do
+            if [ -f "$f" ]; then
+              sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/g' "$f"
+              sed -i 's/id("com.android.application") version ".*"/id("com.android.application") version "8.7.2"/g' "$f"
+              sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.1.0"/g' "$f"
+              sed -i 's/id("org.jetbrains.kotlin.android") version ".*"/id("org.jetbrains.kotlin.android") version "2.1.0"/g' "$f"
+            fi
+          done
+
           sed -i 's/gradle-.*-all.zip/gradle-8.9-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
+          rm -f android/app/build.gradle.kts
           cat << 'EOF' > android/app/build.gradle
           plugins {
               id "com.android.application"
