@@ -55,16 +55,21 @@ jobs:
           sed -i 's/# assets:/assets:\n    - assets\/splash.png\n    - assets\/icon.png/g' pubspec.yaml
 
           if [ -f "$GITHUB_WORKSPACE/icon.png" ]; then
-            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            # تنظيف مسارات الأيقونات القديمة
+            rm -rf android/app/src/main/res/mipmap-*
 
-            cp "$GITHUB_WORKSPACE/icon.png" icon.png
+            # قص الهوامش الشفافة المحيطة بالـ PNG وتكبير الأيقونة لتملأ الحجم القياسي بالكامل
+            convert "$GITHUB_WORKSPACE/icon.png" -trim +repage -resize 512x512\! clean_icon.png
+
             cat << 'EOF' >> pubspec.yaml
 
           flutter_launcher_icons:
             android: "ic_launcher"
             ios: false
-            image_path: "icon.png"
+            image_path: "clean_icon.png"
             min_sdk_android: 24
+            adaptive_icon_background: "#1B3B7B"
+            adaptive_icon_foreground: "clean_icon.png"
           EOF
             dart run flutter_launcher_icons
           fi
@@ -554,7 +559,6 @@ jobs:
                                 color: const Color(0xFF1B3B7B),
                                 child: Stack(
                                   children: [
-                                    // صورة شاشة البداية بحجمها الكامل الطبيعي وبدون أي تقليص
                                     Positioned.fill(
                                       child: Image.asset(
                                         'assets/splash.png',
@@ -563,7 +567,6 @@ jobs:
                                       ),
                                     ),
 
-                                    // الدايرة الدوارة البيضاء أثناء التحميل
                                     if (_hasInternet && !_hasWebError)
                                       const Align(
                                         alignment: Alignment(0, 0.75),
@@ -577,7 +580,6 @@ jobs:
                                         ),
                                       ),
 
-                                    // رسالة تنبيه انقطاع الإنترنت عند عدم وجود شبكة
                                     if (!_hasInternet || _hasWebError)
                                       Positioned(
                                         bottom: 30,
