@@ -1,4 +1,4 @@
-name: Build Fani Pro AAB and APK
+Name: Build Fani Pro AAB and APK
 
 on:
   workflow_dispatch:
@@ -94,9 +94,6 @@ jobs:
               xmlns:tools="http://schemas.android.com/tools">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:replace="android:maxSdkVersion"/>
               <uses-permission android:name="android.permission.CAMERA"/>
 
               <queries>
@@ -212,7 +209,7 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 15
+                  versionCode 16
                   versionName "1.5.0"
               }
 
@@ -304,8 +301,6 @@ jobs:
             Future<void> _requestAppPermissions() async {
               try {
                 await [
-                  Permission.photos,
-                  Permission.storage,
                   Permission.notification,
                 ].request();
               } catch (_) {}
