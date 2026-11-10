@@ -542,84 +542,42 @@ jobs:
 
                           if (showSplashOrOffline)
                             Positioned.fill(
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Color(0xFF234696),
-                                      Color(0xFF13295B),
-                                    ],
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Spacer(flex: 3),
-                                    // التصميم الأصلي الفخم بالشعار الكبير والتوقيع
-                                    Container(
-                                      width: 250,
-                                      height: 250,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(32),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(0.35),
-                                            blurRadius: 22,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(32),
-                                        child: Image.asset(
-                                          'assets/splash.png',
-                                          fit: BoxFit.contain,
-                                          filterQuality: FilterQuality.high,
-                                          isAntiAlias: true,
-                                        ),
-                                      ),
+                              child: Stack(
+                                children: [
+                                  // صورة الدخول تملأ الشاشة بالكامل بدون أي تصغير أو اقتطاع
+                                  Positioned.fill(
+                                    child: Image.asset(
+                                      'assets/splash.png',
+                                      fit: BoxFit.cover,
+                                      filterQuality: FilterQuality.high,
+                                      isAntiAlias: true,
                                     ),
-                                    const Spacer(flex: 2),
+                                  ),
 
-                                    if (_hasInternet && !_hasWebError)
-                                      Column(
-                                        children: [
-                                          // الدوار الأنيق الذي طلبته
-                                          const SizedBox(
-                                            width: 32,
-                                            height: 32,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 3,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 25),
-                                          // توقيعك الشخصي pyMo كما في الصورة الأولى
-                                          const Text(
-                                            'pyMo',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 22,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 2.0,
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    else
-                                      Container(
-                                        margin: const EdgeInsets.symmetric(horizontal: 28),
+                                  // إذا لم يكن هناك إنترنت تظهر رسالة عدم الاتصال الأنيقة في الأسفل
+                                  if (!_hasInternet || _hasWebError)
+                                    Positioned(
+                                      bottom: 40,
+                                      left: 28,
+                                      right: 28,
+                                      child: Container(
                                         padding: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.12),
+                                          color: const Color(0xFF13295B).withOpacity(0.92),
                                           borderRadius: BorderRadius.circular(16),
                                           border: Border.all(
                                             color: Colors.amber.withOpacity(0.5),
                                           ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.4),
+                                              blurRadius: 15,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
                                         ),
                                         child: Column(
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
                                             const Icon(
                                               Icons.wifi_off_rounded,
@@ -666,9 +624,8 @@ jobs:
                                           ],
                                         ),
                                       ),
-                                    const SizedBox(height: 45),
-                                  ],
-                                ),
+                                    ),
+                                ],
                               ),
                             ),
                         ],
