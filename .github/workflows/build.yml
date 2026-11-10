@@ -162,6 +162,7 @@ jobs:
           EOF
 
           sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/' android/settings.gradle || true
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' android/settings.gradle || true
           sed -i 's/gradle-.*-all.zip/gradle-8.9-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
           cat << 'EOF' > android/app/build.gradle
