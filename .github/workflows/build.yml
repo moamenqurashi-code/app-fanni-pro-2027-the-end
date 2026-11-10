@@ -509,7 +509,6 @@ jobs:
               final bool showSplashOrOffline =
                   !_isSplashTimerDone || !_isPageLoaded || !_hasInternet || _hasWebError;
 
-              // تفعيل أداة فحص التحديثات التلقائية من متجر جوجل بلاي
               return UpgradeAlert(
                 dialogStyle: UpgradeDialogStyle.material,
                 upgrader: Upgrader(
@@ -558,21 +557,22 @@ jobs:
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     const Spacer(flex: 3),
+                                    // التصميم الأصلي الفخم بالشعار الكبير والتوقيع
                                     Container(
-                                      width: 135,
-                                      height: 135,
+                                      width: 250,
+                                      height: 250,
                                       decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(28),
+                                        borderRadius: BorderRadius.circular(32),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.28),
-                                            blurRadius: 18,
-                                            offset: const Offset(0, 8),
+                                            color: Colors.black.withOpacity(0.35),
+                                            blurRadius: 22,
+                                            offset: const Offset(0, 10),
                                           ),
                                         ],
                                       ),
                                       child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(28),
+                                        borderRadius: BorderRadius.circular(32),
                                         child: Image.asset(
                                           'assets/splash.png',
                                           fit: BoxFit.contain,
@@ -581,38 +581,29 @@ jobs:
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 18),
-                                    const Text(
-                                      'تطبيق فني برو',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'مساعد طالب التعليم الفني',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                      ),
-                                    ),
                                     const Spacer(flex: 2),
 
                                     if (_hasInternet && !_hasWebError)
-                                      const Column(
+                                      Column(
                                         children: [
-                                          CircularProgressIndicator(
-                                            color: Colors.amber,
-                                            strokeWidth: 3,
+                                          // الدوار الأنيق الذي طلبته
+                                          const SizedBox(
+                                            width: 32,
+                                            height: 32,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 3,
+                                            ),
                                           ),
-                                          SizedBox(height: 14),
-                                          Text(
-                                            'جاري تجهيز المنصة...',
+                                          const SizedBox(height: 25),
+                                          // توقيعك الشخصي pyMo كما في الصورة الأولى
+                                          const Text(
+                                            'pyMo',
                                             style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 13,
+                                              color: Colors.white,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 2.0,
                                             ),
                                           ),
                                         ],
