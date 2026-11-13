@@ -174,14 +174,14 @@ jobs:
 
           for f in android/settings.gradle android/settings.gradle.kts; do
             if [ -f "$f" ]; then
-              sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.7.2"/g' "$f"
-              sed -i 's/id("com.android.application") version ".*"/id("com.android.application") version "8.7.2"/g' "$f"
+              sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.9.1"/g' "$f"
+              sed -i 's/id("com.android.application") version ".*"/id("com.android.application") version "8.9.1"/g' "$f"
               sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.1.0"/g' "$f"
               sed -i 's/id("org.jetbrains.kotlin.android") version ".*"/id("org.jetbrains.kotlin.android") version "2.1.0"/g' "$f"
             fi
           done
 
-          sed -i 's/gradle-.*-all.zip/gradle-8.9-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/gradle-.*-all.zip/gradle-8.11.1-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
           rm -f android/app/build.gradle.kts
           cat << 'EOF' > android/app/build.gradle
@@ -350,7 +350,6 @@ jobs:
                 await _flutterTts.setVolume(1.0);
                 await _flutterTts.setPitch(1.0);
 
-                // إخبار قالب بلوجر بانتهاء الكلام ليختفي مرشد فني برو تلقائياً
                 _flutterTts.setCompletionHandler(() {
                   _controller.runJavaScript('''
                     if (typeof window.onFanniTTSDone === 'function') {
@@ -565,7 +564,6 @@ jobs:
                 ..setBackgroundColor(const Color(0xFF1B3B7B))
                 ..setUserAgent(
                     'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
-                // 1. قناة مرشد فني برو الموجودة أصلاً في قالب بلوجر
                 ..addJavaScriptChannel(
                   'FanniTTS',
                   onMessageReceived: (JavaScriptMessage message) async {
@@ -578,7 +576,6 @@ jobs:
                     }
                   },
                 )
-                // 2. قناة الإعلانات (المكافأة والبيني)
                 ..addJavaScriptChannel(
                   'FaniProBridge',
                   onMessageReceived: (JavaScriptMessage message) async {
@@ -626,7 +623,6 @@ jobs:
                           }
                           document.documentElement.style.webkitTextSizeAdjust = '100%';
 
-                          // إيقاف الصوت فوراً لو الطالب ضغط زر إغلاق فقاعة المرشد
                           var closeBtn = document.querySelector('.mascot-toast-close');
                           if (closeBtn && !closeBtn.dataset.ttsHooked) {
                             closeBtn.dataset.ttsHooked = '1';
