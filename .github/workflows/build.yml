@@ -32,7 +32,7 @@ jobs:
         run: |
           flutter create --org com.pro.ap4016842 --project-name skn app_project
           cd app_project
-          flutter pub add webview_flutter webview_flutter_android url_launcher image_picker "permission_handler:^11.3.1" "permission_handler_android:12.1.0" upgrader
+          flutter pub add webview_flutter webview_flutter_android url_launcher image_picker "permission_handler:^11.3.1" "permission_handler_android:12.1.0" upgrader google_mobile_ads connectivity_plus flutter_tts
 
       - name: Configure App Icon & High-Res Splash Image
         run: |
@@ -85,7 +85,7 @@ jobs:
           cp "$KEY_PATH" "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks"
           keytool -list -v -keystore "$GITHUB_WORKSPACE/app_project/android/app/upload-keystore.jks" -storepass FaniPro2026
 
-      - name: Configure AndroidManifest, 16KB Page Size & Signing in Gradle
+      - name: Configure AndroidManifest, AdMob, Audio, 16KB Page Size & Signing
         run: |
           cd "$GITHUB_WORKSPACE/app_project"
 
@@ -95,6 +95,8 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
               <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+              <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
 
               <queries>
                   <intent>
@@ -115,6 +117,9 @@ jobs:
                   <intent>
                       <action android:name="android.intent.action.SENDTO" />
                   </intent>
+                  <intent>
+                      <action android:name="android.intent.action.TTS_SERVICE" />
+                  </intent>
               </queries>
 
               <application
@@ -126,6 +131,11 @@ jobs:
                   android:requestLegacyExternalStorage="true"
                   android:extractNativeLibs="false"
                   android:hardwareAccelerated="true">
+
+                  <meta-data
+                      android:name="com.google.android.gms.ads.APPLICATION_ID"
+                      android:value="ca-app-pub-4314198432903878~9275491183"/>
+
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
@@ -209,8 +219,9 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 16
-                  versionName "1.5.0"
+                  versionCode 17
+                  versionName "1.6.0"
+                  multiDexEnabled true
               }
 
               packagingOptions {
@@ -242,21 +253,27 @@ jobs:
           }
           EOF
 
-      - name: Write High Performance Flutter WebView Code with Auto Update
+      - name: Write High Performance Flutter WebView Code
         run: |
           cat << 'EOF' > "$GITHUB_WORKSPACE/app_project/lib/main.dart"
           import 'dart:async';
+          import 'dart:convert';
           import 'dart:io';
           import 'package:flutter/material.dart';
+          import 'package:flutter/services.dart';
           import 'package:webview_flutter/webview_flutter.dart';
           import 'package:webview_flutter_android/webview_flutter_android.dart';
           import 'package:url_launcher/url_launcher.dart';
           import 'package:image_picker/image_picker.dart';
           import 'package:permission_handler/permission_handler.dart';
           import 'package:upgrader/upgrader.dart';
+          import 'package:google_mobile_ads/google_mobile_ads.dart';
+          import 'package:connectivity_plus/connectivity_plus.dart';
+          import 'package:flutter_tts/flutter_tts.dart';
 
-          void main() {
+          void main() async {
             WidgetsFlutterBinding.ensureInitialized();
+            await MobileAds.instance.initialize();
             runApp(
               MaterialApp(
                 debugShowCheckedModeBanner: false,
@@ -287,27 +304,194 @@ jobs:
             bool _hasInternet = true;
             bool _hasWebError = false;
             double _loadingProgress = 0.0;
-            Timer? _networkTimer;
             String _lastUrl = 'https://hrinnf.blogspot.com/';
+            DateTime? _lastBackPressed;
+
+            StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+
+            // معرفات AdMob
+            static const String _bannerAdUnitId = 'ca-app-pub-4314198432903878/9000159015';
+            static const String _interstitialAdUnitId = 'ca-app-pub-4314198432903878/1173639886';
+            static const String _rewardedAdUnitId = 'ca-app-pub-4314198432903878/4841422157';
+
+            BannerAd? _bannerAd;
+            bool _isBannerLoaded = false;
+
+            InterstitialAd? _interstitialAd;
+            int _pageNavigationCount = 0;
+            DateTime _lastInterstitialTime = DateTime.now().subtract(const Duration(minutes: 2));
+
+            RewardedAd? _rewardedAd;
+            String _pendingRewardAction = '';
+
+            // محرك الصوت لمرشد فني برو (FanniTTS)
+            final FlutterTts _flutterTts = FlutterTts();
 
             @override
             void initState() {
               super.initState();
               _requestAppPermissions();
+              _initAudioEngine();
+              _initAds();
               _initWebView();
               _startSplashAndNetworkGuard();
             }
 
             Future<void> _requestAppPermissions() async {
               try {
-                await [
-                  Permission.notification,
-                ].request();
+                await [Permission.notification].request();
               } catch (_) {}
             }
 
+            Future<void> _initAudioEngine() async {
+              try {
+                await _flutterTts.setLanguage("ar-EG");
+                await _flutterTts.setSpeechRate(0.52);
+                await _flutterTts.setVolume(1.0);
+                await _flutterTts.setPitch(1.0);
+
+                // إخبار قالب بلوجر بانتهاء الكلام ليختفي مرشد فني برو تلقائياً
+                _flutterTts.setCompletionHandler(() {
+                  _controller.runJavaScript('''
+                    if (typeof window.onFanniTTSDone === 'function') {
+                      window.onFanniTTSDone();
+                    }
+                  ''');
+                });
+              } catch (_) {}
+            }
+
+            void _initAds() {
+              _loadBannerAd();
+              _loadInterstitialAd();
+              _loadRewardedAd();
+            }
+
+            void _loadBannerAd() {
+              _bannerAd = BannerAd(
+                adUnitId: _bannerAdUnitId,
+                size: AdSize.banner,
+                request: const AdRequest(),
+                listener: BannerAdListener(
+                  onAdLoaded: (ad) {
+                    if (mounted) {
+                      setState(() {
+                        _isBannerLoaded = true;
+                      });
+                    }
+                  },
+                  onAdFailedToLoad: (ad, error) {
+                    ad.dispose();
+                    if (mounted) {
+                      setState(() {
+                        _isBannerLoaded = false;
+                      });
+                    }
+                    Future.delayed(const Duration(seconds: 30), () {
+                      if (mounted) _loadBannerAd();
+                    });
+                  },
+                ),
+              )..load();
+            }
+
+            void _loadInterstitialAd() {
+              InterstitialAd.load(
+                adUnitId: _interstitialAdUnitId,
+                request: const AdRequest(),
+                adLoadCallback: InterstitialAdLoadCallback(
+                  onAdLoaded: (ad) {
+                    _interstitialAd = ad;
+                    _interstitialAd?.setImmersiveMode(true);
+                  },
+                  onAdFailedToLoad: (error) {
+                    _interstitialAd = null;
+                  },
+                ),
+              );
+            }
+
+            void _maybeShowInterstitialAd() {
+              _pageNavigationCount++;
+              final secondsSinceLastAd = DateTime.now().difference(_lastInterstitialTime).inSeconds;
+
+              if (_pageNavigationCount >= 4 && secondsSinceLastAd >= 60 && _interstitialAd != null) {
+                _pageNavigationCount = 0;
+                _lastInterstitialTime = DateTime.now();
+                _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+                  onAdDismissedFullScreenContent: (ad) {
+                    ad.dispose();
+                    _loadInterstitialAd();
+                  },
+                  onAdFailedToShowFullScreenContent: (ad, error) {
+                    ad.dispose();
+                    _loadInterstitialAd();
+                  },
+                );
+                _interstitialAd!.show();
+                _interstitialAd = null;
+              } else if (_interstitialAd == null) {
+                _loadInterstitialAd();
+              }
+            }
+
+            void _loadRewardedAd() {
+              RewardedAd.load(
+                adUnitId: _rewardedAdUnitId,
+                request: const AdRequest(),
+                rewardedAdLoadCallback: RewardedAdLoadCallback(
+                  onAdLoaded: (ad) {
+                    _rewardedAd = ad;
+                    _rewardedAd?.setImmersiveMode(true);
+                  },
+                  onAdFailedToLoad: (error) {
+                    _rewardedAd = null;
+                  },
+                ),
+              );
+            }
+
+            void _showRewardedAd(String rewardCallbackData) {
+              _pendingRewardAction = rewardCallbackData;
+              if (_rewardedAd != null) {
+                bool rewardEarned = false;
+                _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+                  onAdDismissedFullScreenContent: (ad) {
+                    ad.dispose();
+                    _loadRewardedAd();
+                    if (rewardEarned) {
+                      _notifyWebRewardEarned(_pendingRewardAction);
+                    }
+                  },
+                  onAdFailedToShowFullScreenContent: (ad, error) {
+                    ad.dispose();
+                    _loadRewardedAd();
+                    _notifyWebRewardEarned(_pendingRewardAction);
+                  },
+                );
+                _rewardedAd!.show(
+                  onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+                    rewardEarned = true;
+                  },
+                );
+                _rewardedAd = null;
+              } else {
+                _loadRewardedAd();
+                _notifyWebRewardEarned(_pendingRewardAction);
+              }
+            }
+
+            void _notifyWebRewardEarned(String actionData) {
+              final safeData = jsonEncode(actionData);
+              _controller.runJavaScript('''
+                if (typeof window.onFaniProRewardEarned === 'function') {
+                  window.onFaniProRewardEarned($safeData);
+                }
+              ''');
+            }
+
             void _startSplashAndNetworkGuard() {
-              Future.delayed(const Duration(seconds: 3), () {
+              Future.delayed(const Duration(milliseconds: 1200), () {
                 if (mounted) {
                   setState(() {
                     _isSplashTimerDone = true;
@@ -315,38 +499,31 @@ jobs:
                 }
               });
 
-              _checkInternetConnection();
-              _networkTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-                _checkInternetConnection();
+              _checkInitialConnectivity();
+              _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+                final bool connected = results.any((r) => r != ConnectivityResult.none);
+                _handleConnectionChange(connected);
               });
             }
 
-            Future<void> _checkInternetConnection() async {
-              try {
-                final result = await InternetAddress.lookup('google.com')
-                    .timeout(const Duration(seconds: 2));
-                final bool connected =
-                    result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+            Future<void> _checkInitialConnectivity() async {
+              final results = await Connectivity().checkConnectivity();
+              final bool connected = results.any((r) => r != ConnectivityResult.none);
+              _handleConnectionChange(connected);
+            }
 
-                if (mounted) {
-                  if (connected) {
-                    if (!_hasInternet || _hasWebError) {
-                      setState(() {
-                        _hasInternet = true;
-                        _hasWebError = false;
-                      });
-                      _controller.loadRequest(Uri.parse(_lastUrl));
-                    }
-                  } else {
-                    if (_hasInternet) {
-                      setState(() {
-                        _hasInternet = false;
-                      });
-                    }
-                  }
+            void _handleConnectionChange(bool connected) {
+              if (!mounted) return;
+              if (connected) {
+                if (!_hasInternet || _hasWebError) {
+                  setState(() {
+                    _hasInternet = true;
+                    _hasWebError = false;
+                  });
+                  _controller.loadRequest(Uri.parse(_lastUrl));
                 }
-              } catch (_) {
-                if (mounted && _hasInternet) {
+              } else {
+                if (_hasInternet) {
                   setState(() {
                     _hasInternet = false;
                   });
@@ -388,6 +565,34 @@ jobs:
                 ..setBackgroundColor(const Color(0xFF1B3B7B))
                 ..setUserAgent(
                     'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36')
+                // 1. قناة مرشد فني برو الموجودة أصلاً في قالب بلوجر
+                ..addJavaScriptChannel(
+                  'FanniTTS',
+                  onMessageReceived: (JavaScriptMessage message) async {
+                    final String text = message.message.trim();
+                    if (text == '__STOP__') {
+                      await _flutterTts.stop();
+                    } else if (text.isNotEmpty) {
+                      await _flutterTts.stop();
+                      await _flutterTts.speak(text);
+                    }
+                  },
+                )
+                // 2. قناة الإعلانات (المكافأة والبيني)
+                ..addJavaScriptChannel(
+                  'FaniProBridge',
+                  onMessageReceived: (JavaScriptMessage message) async {
+                    try {
+                      final data = jsonDecode(message.message);
+                      final String action = data['action'] ?? '';
+                      if (action == 'show_reward_ad') {
+                        _showRewardedAd(data['target'] ?? '');
+                      } else if (action == 'show_interstitial') {
+                        _maybeShowInterstitialAd();
+                      }
+                    } catch (_) {}
+                  },
+                )
                 ..setNavigationDelegate(
                   NavigationDelegate(
                     onProgress: (int progress) {
@@ -398,7 +603,11 @@ jobs:
                       }
                     },
                     onPageStarted: (String url) {
+                      _flutterTts.stop();
                       if (url.startsWith('http')) {
+                        if (_lastUrl != url) {
+                          _maybeShowInterstitialAd();
+                        }
                         _lastUrl = url;
                       }
                     },
@@ -416,6 +625,15 @@ jobs:
                             meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
                           }
                           document.documentElement.style.webkitTextSizeAdjust = '100%';
+
+                          // إيقاف الصوت فوراً لو الطالب ضغط زر إغلاق فقاعة المرشد
+                          var closeBtn = document.querySelector('.mascot-toast-close');
+                          if (closeBtn && !closeBtn.dataset.ttsHooked) {
+                            closeBtn.dataset.ttsHooked = '1';
+                            closeBtn.addEventListener('click', function() {
+                              if (window.FanniTTS) window.FanniTTS.postMessage('__STOP__');
+                            });
+                          }
 
                           function handleFocus(e) {
                             var target = e.target;
@@ -436,12 +654,8 @@ jobs:
                         if (mounted) {
                           setState(() {
                             _hasWebError = true;
-                            _hasInternet = false;
                             _isPageLoaded = false;
                           });
-                          controller.loadHtmlString(
-                            '<html><body style="background-color:#1B3B7B;"></body></html>',
-                          );
                         }
                       }
                     },
@@ -489,7 +703,8 @@ jobs:
                           lower.contains('api.whatsapp.com') ||
                           lower.contains('whatsapp.com/send') ||
                           lower.contains('chat.whatsapp.com') ||
-                          lower.contains('t.me/')) {
+                          lower.contains('t.me/') ||
+                          lower.contains('play.google.com/store')) {
                         try {
                           await launchUrl(uri, mode: LaunchMode.externalApplication);
                         } catch (_) {}
@@ -507,7 +722,11 @@ jobs:
 
             @override
             void dispose() {
-              _networkTimer?.cancel();
+              _connectivitySub?.cancel();
+              _bannerAd?.dispose();
+              _interstitialAd?.dispose();
+              _rewardedAd?.dispose();
+              _flutterTts.stop();
               super.dispose();
             }
 
@@ -528,6 +747,25 @@ jobs:
                     if (didPop) return;
                     if (await _controller.canGoBack()) {
                       await _controller.goBack();
+                    } else {
+                      final now = DateTime.now();
+                      if (_lastBackPressed == null ||
+                          now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
+                        _lastBackPressed = now;
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'اضغط مرة أخرى للخروج من تطبيق فني برو',
+                                textAlign: TextAlign.center,
+                              ),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } else {
+                        SystemNavigator.pop();
+                      }
                     }
                   },
                   child: Scaffold(
@@ -536,16 +774,31 @@ jobs:
                     body: SafeArea(
                       child: Stack(
                         children: [
-                          WebViewWidget(controller: _controller),
+                          Column(
+                            children: [
+                              if (_isBannerLoaded && _bannerAd != null)
+                                Container(
+                                  width: _bannerAd!.size.width.toDouble(),
+                                  height: _bannerAd!.size.height.toDouble(),
+                                  color: const Color(0xFF1B3B7B),
+                                  alignment: Alignment.center,
+                                  child: AdWidget(ad: _bannerAd!),
+                                ),
 
-                          if (_loadingProgress < 1.0 && !showSplashOrOffline)
-                            LinearProgressIndicator(
-                              value: _loadingProgress,
-                              backgroundColor: Colors.transparent,
-                              valueColor:
-                                  const AlwaysStoppedAnimation<Color>(Colors.amber),
-                              minHeight: 2.5,
-                            ),
+                              if (_loadingProgress < 1.0 && !showSplashOrOffline)
+                                LinearProgressIndicator(
+                                  value: _loadingProgress,
+                                  backgroundColor: Colors.transparent,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(Colors.amber),
+                                  minHeight: 2.5,
+                                ),
+
+                              Expanded(
+                                child: WebViewWidget(controller: _controller),
+                              ),
+                            ],
+                          ),
 
                           if (showSplashOrOffline)
                             Positioned.fill(
@@ -621,7 +874,10 @@ jobs:
                                                   foregroundColor: Colors.black87,
                                                 ),
                                                 onPressed: () {
-                                                  _checkInternetConnection();
+                                                  setState(() {
+                                                    _hasWebError = false;
+                                                  });
+                                                  _checkInitialConnectivity();
                                                   _controller.loadRequest(Uri.parse(_lastUrl));
                                                 },
                                                 icon: const Icon(Icons.refresh, size: 18),
