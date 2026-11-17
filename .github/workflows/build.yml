@@ -160,22 +160,6 @@ jobs:
           </manifest>
           EOF
 
-          mkdir -p android/app/src/main/kotlin/com/pro/ap4016842/skn
-          cat << 'EOF' > android/app/src/main/kotlin/com/pro/ap4016842/skn/MainActivity.kt
-          package com.pro.ap4016842.skn
-
-          import android.os.Bundle
-          import androidx.activity.enableEdgeToEdge
-          import io.flutter.embedding.android.FlutterFragmentActivity
-
-          class MainActivity : FlutterFragmentActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  enableEdgeToEdge()
-                  super.onCreate(savedInstanceState)
-              }
-          }
-          EOF
-
           for style_file in android/app/src/main/res/values/styles.xml android/app/src/main/res/values-night/styles.xml; do
             if [ -f "$style_file" ]; then
               sed -i '/statusBarColor/d' "$style_file"
@@ -197,6 +181,7 @@ jobs:
           -keepattributes JavascriptInterface
           -keepattributes *Annotation*
           -dontwarn com.google.android.gms.**
+          -dontwarn com.google.android.play.core.**
           EOF
 
           ACTUAL_ALIAS=$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass FaniPro2026 | grep "Alias name:" | head -n 1 | awk '{print $3}')
@@ -296,6 +281,24 @@ jobs:
               source '../..'
           }
           EOF
+
+          MAIN_ACT=$(find android/app/src/main/kotlin -name "MainActivity.kt" | head -n 1)
+          if [ -n "$MAIN_ACT" ]; then
+            cat << 'EOF' > "$MAIN_ACT"
+          package com.pro.ap4016842.skn
+
+          import android.os.Bundle
+          import androidx.activity.enableEdgeToEdge
+          import io.flutter.embedding.android.FlutterFragmentActivity
+
+          class MainActivity : FlutterFragmentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  enableEdgeToEdge()
+                  super.onCreate(savedInstanceState)
+              }
+          }
+          EOF
+          fi
 
       - name: Write High Performance Flutter WebView Code
         run: |
