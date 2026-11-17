@@ -96,7 +96,7 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-              <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
+              <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="merge"/>
 
               <queries>
                   <intent>
@@ -175,6 +175,8 @@ jobs:
           -keep class io.flutter.view.** { *; }
           -keep class io.flutter.** { *; }
           -keep class io.flutter.plugins.** { *; }
+          -keep class com.google.android.gms.ads.** { *; }
+          -keep class com.google.ads.** { *; }
           -keepclassmembers class * {
               @android.webkit.JavascriptInterface <methods>;
           }
@@ -243,8 +245,8 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 18
-                  versionName "1.6.1"
+                  versionCode 19
+                  versionName "1.6.2"
                   multiDexEnabled true
               }
 
@@ -269,6 +271,9 @@ jobs:
                       minifyEnabled true
                       shrinkResources true
                       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                      ndk {
+                          debugSymbolLevel 'FULL'
+                      }
                   }
               }
           }
