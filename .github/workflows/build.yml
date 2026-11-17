@@ -160,6 +160,45 @@ jobs:
           </manifest>
           EOF
 
+          mkdir -p android/app/src/main/kotlin/com/pro/ap4016842/skn
+          cat << 'EOF' > android/app/src/main/kotlin/com/pro/ap4016842/skn/MainActivity.kt
+          package com.pro.ap4016842.skn
+
+          import android.os.Bundle
+          import androidx.activity.enableEdgeToEdge
+          import io.flutter.embedding.android.FlutterFragmentActivity
+
+          class MainActivity : FlutterFragmentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  enableEdgeToEdge()
+                  super.onCreate(savedInstanceState)
+              }
+          }
+          EOF
+
+          for style_file in android/app/src/main/res/values/styles.xml android/app/src/main/res/values-night/styles.xml; do
+            if [ -f "$style_file" ]; then
+              sed -i '/statusBarColor/d' "$style_file"
+              sed -i '/navigationBarColor/d' "$style_file"
+              sed -i '/windowLayoutInDisplayCutoutMode/d' "$style_file"
+            fi
+          done
+
+          cat << 'EOF' > android/app/proguard-rules.pro
+          -keep class io.flutter.app.** { *; }
+          -keep class io.flutter.plugin.** { *; }
+          -keep class io.flutter.util.** { *; }
+          -keep class io.flutter.view.** { *; }
+          -keep class io.flutter.** { *; }
+          -keep class io.flutter.plugins.** { *; }
+          -keepclassmembers class * {
+              @android.webkit.JavascriptInterface <methods>;
+          }
+          -keepattributes JavascriptInterface
+          -keepattributes *Annotation*
+          -dontwarn com.google.android.gms.**
+          EOF
+
           ACTUAL_ALIAS=$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass FaniPro2026 | grep "Alias name:" | head -n 1 | awk '{print $3}')
           if [ -z "$ACTUAL_ALIAS" ]; then
             ACTUAL_ALIAS="upload"
@@ -219,8 +258,8 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 17
-                  versionName "1.6.0"
+                  versionCode 18
+                  versionName "1.6.1"
                   multiDexEnabled true
               }
 
@@ -242,10 +281,15 @@ jobs:
               buildTypes {
                   release {
                       signingConfig signingConfigs.release
-                      minifyEnabled false
-                      shrinkResources false
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
                   }
               }
+          }
+
+          dependencies {
+              implementation "androidx.activity:activity-ktx:1.9.3"
           }
 
           flutter {
@@ -906,10 +950,11 @@ jobs:
           flutter build appbundle --release
           flutter build apk --release
 
-      - name: Upload App Bundles
+      - name: Upload App Bundles & Mapping File
         uses: actions/upload-artifact@v4
         with:
           name: fani-pro-packages
           path: |
             app_project/build/app/outputs/bundle/release/app-release.aab
             app_project/build/app/outputs/flutter-apk/app-release.apk
+            app_project/build/app/outputs/mapping/release/mapping.txt
