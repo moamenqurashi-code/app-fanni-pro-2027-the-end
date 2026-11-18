@@ -96,7 +96,7 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-              <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="merge"/>
+              <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
 
               <queries>
                   <intent>
@@ -176,6 +176,9 @@ jobs:
           -keep class io.flutter.** { *; }
           -keep class io.flutter.plugins.** { *; }
           -keep class com.google.android.gms.ads.** { *; }
+          -keep class com.google.android.gms.ads.identifier.** { *; }
+          -keep public class com.google.android.gms.ads.identifier.AdvertisingIdClient { public *; }
+          -keep public class com.google.android.gms.ads.identifier.AdvertisingIdClient$Info { public *; }
           -keep class com.google.ads.** { *; }
           -keepclassmembers class * {
               @android.webkit.JavascriptInterface <methods>;
@@ -245,8 +248,8 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 20
-                  versionName "1.6.3"
+                  versionCode 21
+                  versionName "1.6.4"
                   multiDexEnabled true
               }
 
@@ -280,6 +283,7 @@ jobs:
 
           dependencies {
               implementation "androidx.activity:activity-ktx:1.9.3"
+              implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
           }
 
           flutter {
@@ -958,9 +962,13 @@ jobs:
           flutter build appbundle --release
           flutter build apk --release
 
-          export PATH=$PATH:$ANDROID_HOME/build-tools/35.0.0
-          echo "=== Verifying AD_ID Permission in Built APK ==="
-          aapt2 dump permissions build/app/outputs/flutter-apk/app-release.apk | grep "AD_ID" || echo "AD_ID not found!"
+          echo "=== Verifying AD_ID Inside the Actual AAB File ==="
+          curl -L -s -o bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+          if ! java -jar bundletool.jar dump manifest --bundle=build/app/outputs/bundle/release/app-release.aab | grep -q "com.google.android.gms.permission.AD_ID"; then
+            echo "CRITICAL ERROR: AD_ID permission is MISSING inside app-release.aab!"
+            exit 1
+          fi
+          echo "SUCCESS: AD_ID is 100% confirmed inside app-release.aab!"
 
           SYMBOLS_ZIP="build/app/outputs/native-debug-symbols/release/native-debug-symbols.zip"
           if [ ! -f "$SYMBOLS_ZIP" ]; then
