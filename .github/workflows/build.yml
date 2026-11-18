@@ -245,8 +245,8 @@ jobs:
                   applicationId "com.pro.ap4016842.skn"
                   minSdkVersion 24
                   targetSdkVersion 36
-                  versionCode 19
-                  versionName "1.6.2"
+                  versionCode 20
+                  versionName "1.6.3"
                   multiDexEnabled true
               }
 
@@ -952,13 +952,26 @@ jobs:
           }
           EOF
 
-      - name: Build Signed AAB and APK
+      - name: Build Signed AAB, APK & Verify Symbols
         run: |
           cd "$GITHUB_WORKSPACE/app_project"
           flutter build appbundle --release
           flutter build apk --release
 
-      - name: Upload App Bundles & Mapping File
+          export PATH=$PATH:$ANDROID_HOME/build-tools/35.0.0
+          echo "=== Verifying AD_ID Permission in Built APK ==="
+          aapt2 dump permissions build/app/outputs/flutter-apk/app-release.apk | grep "AD_ID" || echo "AD_ID not found!"
+
+          SYMBOLS_ZIP="build/app/outputs/native-debug-symbols/release/native-debug-symbols.zip"
+          if [ ! -f "$SYMBOLS_ZIP" ]; then
+            mkdir -p build/app/outputs/native-debug-symbols/release
+            LIBS_DIR=$(find build/app/intermediates/merged_native_libs/release -type d -name "lib" | head -n 1)
+            if [ -n "$LIBS_DIR" ]; then
+              (cd "$LIBS_DIR" && zip -r "$GITHUB_WORKSPACE/app_project/$SYMBOLS_ZIP" .)
+            fi
+          fi
+
+      - name: Upload App Bundles, Mapping & Debug Symbols
         uses: actions/upload-artifact@v4
         with:
           name: fani-pro-packages
@@ -966,3 +979,4 @@ jobs:
             app_project/build/app/outputs/bundle/release/app-release.aab
             app_project/build/app/outputs/flutter-apk/app-release.apk
             app_project/build/app/outputs/mapping/release/mapping.txt
+            app_project/build/app/outputs/native-debug-symbols/release/native-debug-symbols.zip
